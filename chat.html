@@ -1571,5 +1571,294 @@ html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
   };
 })();
 </script>
+
+<!-- ===== Added feature: voice and video calls (WebRTC, signalling over Supabase Realtime) ===== -->
+<script>
+(function () {
+  'use strict';
+  /* Free STUN servers work on most home and mobile networks. For calls that must work on EVERY network
+     (strict offices, some mobile carriers) add a TURN server here, for example:
+     { urls: 'turn:your.server.com:3478', username: 'user', credential: 'pass' } */
+  const ICE = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+  const RING_MS = 45000;
+  const ce = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const fmtDur = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  let call = null, incoming = null, ringTimer = null, actx = null, ready = false;
+  const chans = {};
+
+  const css = document.createElement('style');
+  css.textContent = `
+.callbtn{margin-left:6px;font-size:16px;padding:8px 12px}
+#callOv{position:fixed;inset:0;z-index:70;background:#0b1021;color:#fff;display:none;flex-direction:column}
+#callOv.open{display:flex}
+#cRemote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0b1021}
+#callOv.voice #cRemote{opacity:0}
+#cLocal{position:absolute;right:16px;bottom:120px;width:112px;height:150px;object-fit:cover;border-radius:16px;background:#1c2547;transform:scaleX(-1);box-shadow:0 10px 30px -8px rgba(0,0,0,.6);z-index:2}
+#callOv.voice #cLocal{display:none}
+.cTop{position:relative;z-index:2;text-align:center;padding:28px 16px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.cTop b{display:block;font-family:var(--head);font-size:26px}
+.cTop span{opacity:.85}
+.cAv{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:132px;height:132px;font-size:54px;font-family:var(--head);font-weight:800;z-index:1}
+#callOv.live .cAv{display:none}
+.cBar{position:absolute;bottom:28px;left:0;right:0;display:flex;justify-content:center;gap:18px;z-index:3}
+.cBtn{width:62px;height:62px;border-radius:50%;border:0;font-size:26px;background:rgba(255,255,255,.2);color:#fff}
+.cBtn.off{background:#fff;color:#121A33}
+.cBtn.end{background:#e5484d}
+#inOv{position:fixed;inset:0;z-index:75;background:rgba(11,16,33,.94);color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px}
+#inOv.open{display:flex}
+#inOv .avatar{width:120px;height:120px;font-size:48px;font-family:var(--head);font-weight:800;margin-bottom:8px}
+#inOv b{font-family:var(--head);font-size:28px}
+#inOv .btns{display:flex;gap:40px;margin-top:28px}
+#inOv .cBtn.ok{background:#2fd17b}
+#inOv small{display:block;opacity:.8;margin-top:4px}`;
+  document.head.appendChild(css);
+
+  /* ---------- screens ---------- */
+  document.body.insertAdjacentHTML('beforeend',
+    '<div id="callOv" role="dialog" aria-modal="true" aria-label="Call">' +
+      '<video id="cRemote" autoplay playsinline></video>' +
+      '<div class="avatar cAv" id="cAv"></div>' +
+      '<div class="cTop"><b id="cName"></b><span id="cStatus"></span></div>' +
+      '<video id="cLocal" autoplay playsinline muted></video>' +
+      '<div class="cBar"><button class="cBtn" id="cMute" type="button" aria-label="Mute microphone">&#127908;</button>' +
+      '<button class="cBtn" id="cCam" type="button" aria-label="Turn camera off">&#128247;</button>' +
+      '<button class="cBtn end" id="cEnd" type="button" aria-label="End call">&#128222;</button></div>' +
+    '</div>' +
+    '<div id="inOv" role="alertdialog" aria-modal="true" aria-label="Incoming call">' +
+      '<div class="avatar" id="inAv"></div><b id="inName"></b><span id="inKind"></span>' +
+      '<div class="btns"><button class="cBtn end" id="inNo" type="button" aria-label="Decline">&#128222;</button>' +
+      '<button class="cBtn ok" id="inYes" type="button" aria-label="Accept">&#128222;</button></div>' +
+    '</div>');
+
+  /* call buttons in the chat header (direct chats only) */
+  const vb = ce('button', 'hbtn callbtn', '📞'), cb = ce('button', 'hbtn callbtn', '🎥');
+  vb.type = cb.type = 'button'; vb.dataset.video = '0'; cb.dataset.video = '1';
+  vb.setAttribute('aria-label', 'Voice call'); cb.setAttribute('aria-label', 'Video call');
+  vb.title = 'Voice call'; cb.title = 'Video call';
+  vb.style.display = cb.style.display = 'none';
+  $('pinBtn').after(vb, cb);
+  /* the header has its own click handlers (open info), so catch call-button clicks first */
+  window.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('.callbtn'); if (!b) return;
+    e.stopPropagation(); e.preventDefault(); startCall(b.dataset.video === '1');
+  }, true);
+  const _uh = window.updateHeader;
+  window.updateHeader = function () {
+    _uh();
+    const show = !!(active && active.type === 'direct' && active.other);
+    vb.style.display = cb.style.display = show ? '' : 'none';
+  };
+
+  /* ---------- signalling ---------- */
+  function chanFor(uid) {
+    if (chans[uid]) return chans[uid];
+    const ch = nookDb.channel('nook-call-' + uid, { config: { broadcast: { self: false } } });
+    chans[uid] = { ch, ready: new Promise(res => ch.subscribe(s => { if (s === 'SUBSCRIBED') res(); })) };
+    return chans[uid];
+  }
+  async function send(uid, payload) {
+    try {
+      const c = chanFor(uid); await c.ready;
+      await c.ch.send({ type: 'broadcast', event: 'call', payload: Object.assign({}, payload, { from: me.id, to: uid }) });
+    } catch (e) {}
+  }
+  function setup() {
+    nookDb.channel('nook-call-' + me.id)
+      .on('broadcast', { event: 'call' }, ({ payload }) => { onSignal(payload).catch(() => {}); })
+      .subscribe();
+  }
+  const _lc = window.loadChats;
+  window.loadChats = async function () { await _lc(); if (!ready && me) { ready = true; setup(); } };
+
+  async function onSignal(p) {
+    if (!p || p.to !== me.id) return;
+    if (p.t === 'invite') return onInvite(p);
+    if (incoming && incoming.id === p.id && p.from === incoming.from && p.t === 'end') {
+      const n = incoming.name; dismissIncoming(); toast('Missed call from ' + n); return;
+    }
+    if (!call || call.id !== p.id || p.from !== call.peer) return;
+    if (p.t === 'accept') { clearTimeout(call.timeout); setStatus('Connecting…'); await makeOffer(); }
+    else if (p.t === 'reject') endCall(false, 'Call declined');
+    else if (p.t === 'busy') endCall(false, call.name + ' is on another call');
+    else if (p.t === 'offer') await onOffer(p);
+    else if (p.t === 'answer') { await call.pc.setRemoteDescription(p.sdp); await flushIce(); }
+    else if (p.t === 'ice') {
+      if (call.pc.remoteDescription) { try { await call.pc.addIceCandidate(p.cand); } catch (e) {} }
+      else call.pending.push(p.cand);
+    }
+    else if (p.t === 'end') endCall(false, 'Call ended');
+  }
+  async function flushIce() {
+    const q = call.pending.splice(0);
+    for (const c of q) { try { await call.pc.addIceCandidate(c); } catch (e) {} }
+  }
+
+  /* ---------- helpers ---------- */
+  function mediaError(e) {
+    const n = e && e.name;
+    if (n === 'NotAllowedError' || n === 'SecurityError') return 'Allow microphone and camera access in your browser, then try again';
+    if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'No microphone or camera found';
+    if (n === 'NotReadableError') return 'Your microphone or camera is being used by another app';
+    return 'Could not start the call';
+  }
+  const getMedia = video => navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: video ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
+  });
+  async function photoInto(uid, node) {
+    try {
+      const { data } = await nookDb.from('profiles').select('avatar_url').eq('id', uid).maybeSingle();
+      if (data && data.avatar_url) { node.style.backgroundImage = 'url("' + String(data.avatar_url).replace(/"/g, '%22') + '")'; node.style.backgroundSize = 'cover'; node.textContent = ''; }
+    } catch (e) {}
+  }
+  function tone(f, d) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = f;
+      g.gain.setValueAtTime(.001, actx.currentTime); g.gain.exponentialRampToValueAtTime(.2, actx.currentTime + .03); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + d);
+      o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + d + .02);
+    } catch (e) {}
+  }
+  const setStatus = t => { $('cStatus').textContent = t; };
+
+  /* ---------- the peer connection ---------- */
+  function buildPc() {
+    const pc = new RTCPeerConnection({ iceServers: ICE });
+    call.pc = pc;
+    call.local.getTracks().forEach(t => pc.addTrack(t, call.local));
+    pc.onicecandidate = e => { if (e.candidate && call) send(call.peer, { t: 'ice', id: call.id, cand: e.candidate.toJSON() }); };
+    pc.ontrack = e => {
+      const r = $('cRemote'); r.srcObject = e.streams[0]; r.play().catch(() => {});
+      if (call && call.video) $('callOv').classList.add('live');
+    };
+    pc.onconnectionstatechange = () => {
+      if (!call || call.pc !== pc) return;
+      const s = pc.connectionState;
+      if (s === 'connected') onConnected();
+      else if (s === 'disconnected') setStatus('Reconnecting…');
+      else if (s === 'failed') endCall(true, 'Connection failed. The network may be blocking calls.');
+    };
+  }
+  function onConnected() {
+    if (!call) return;
+    clearTimeout(call.timeout);
+    if (call.started) { setStatus(fmtDur(Math.round((Date.now() - call.started) / 1000))); return; }
+    call.started = Date.now(); setStatus('00:00');
+    call.tick = setInterval(() => { if (call && call.started) setStatus(fmtDur(Math.round((Date.now() - call.started) / 1000))); }, 1000);
+  }
+  async function makeOffer() {
+    const pc = call.pc, offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    send(call.peer, { t: 'offer', id: call.id, sdp: { type: offer.type, sdp: offer.sdp } });
+  }
+  async function onOffer(p) {
+    const pc = call.pc;
+    await pc.setRemoteDescription(p.sdp); await flushIce();
+    const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+    send(call.peer, { t: 'answer', id: call.id, sdp: { type: ans.type, sdp: ans.sdp } });
+  }
+
+  function showCallUi(status) {
+    const o = $('callOv');
+    o.classList.remove('live'); o.classList.toggle('voice', !call.video); o.classList.add('open');
+    $('cName').textContent = call.name; setStatus(status);
+    const av = $('cAv'); av.style.backgroundImage = ''; av.textContent = initial(call.name); photoInto(call.peer, av);
+    $('cLocal').srcObject = call.local;
+    $('cMute').classList.remove('off'); $('cMute').innerHTML = '&#127908;';
+    $('cCam').classList.remove('off'); $('cCam').innerHTML = '&#128247;'; $('cCam').style.display = call.video ? '' : 'none';
+  }
+
+  /* ---------- placing a call ---------- */
+  async function startCall(video) {
+    const c = active;
+    if (!c || c.type !== 'direct' || !c.other) return;
+    if (call || incoming) return toast('You are already in a call');
+    if (!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+      return toast('Calls need a modern browser on an https:// page');
+    let stream;
+    try { stream = await getMedia(video); } catch (e) { return toast(mediaError(e)); }
+    if (call || incoming) { stream.getTracks().forEach(t => t.stop()); return; }
+    call = { id: crypto.randomUUID(), peer: c.other, name: c.name, convId: c.id, video, role: 'caller', local: stream, pending: [], started: null };
+    buildPc(); showCallUi('Calling…');
+    send(call.peer, { t: 'invite', id: call.id, video });
+    call.timeout = setTimeout(() => endCall(true, c.name + ' did not answer'), RING_MS);
+  }
+
+  /* ---------- receiving a call ---------- */
+  function onInvite(p) {
+    const c = Object.values(byId).find(x => x.type === 'direct' && x.other === p.from);
+    if (!c) return;                                   // only people you chat with can ring you
+    if (call || incoming) { send(p.from, { t: 'busy', id: p.id }); return; }
+    incoming = { id: p.id, from: p.from, video: !!p.video, name: c.name };
+    $('inName').textContent = c.name;
+    $('inKind').textContent = 'Incoming ' + (incoming.video ? 'video' : 'voice') + ' call';
+    const av = $('inAv'); av.style.backgroundImage = ''; av.textContent = initial(c.name); photoInto(p.from, av);
+    $('inOv').classList.add('open');
+    const ring = () => { tone(440, .35); setTimeout(() => tone(480, .35), 420); try { navigator.vibrate && navigator.vibrate([300, 200, 300]); } catch (e) {} };
+    ring(); ringTimer = setInterval(ring, 2200);
+    incoming.timeout = setTimeout(() => { const n = incoming && incoming.name; dismissIncoming(); if (n) toast('Missed call from ' + n); }, RING_MS);
+    if (document.hidden && window.Notification && Notification.permission === 'granted') {
+      try { const n = new Notification(c.name, { body: 'Incoming ' + (incoming.video ? 'video' : 'voice') + ' call', tag: 'nook-call', requireInteraction: true }); n.onclick = () => { window.focus(); n.close(); }; } catch (e) {}
+    }
+  }
+  function dismissIncoming() {
+    if (!incoming) return;
+    clearInterval(ringTimer); clearTimeout(incoming.timeout); incoming = null;
+    $('inOv').classList.remove('open');
+  }
+  $('inNo').onclick = () => { const i = incoming; if (!i) return; dismissIncoming(); send(i.from, { t: 'reject', id: i.id }); };
+  $('inYes').onclick = async () => {
+    const i = incoming; if (!i) return;
+    dismissIncoming();
+    let stream;
+    try { stream = await getMedia(i.video); }
+    catch (e) { send(i.from, { t: 'reject', id: i.id }); return toast(mediaError(e)); }
+    if (call) { stream.getTracks().forEach(t => t.stop()); return; }
+    call = { id: i.id, peer: i.from, name: i.name, video: i.video, role: 'callee', local: stream, pending: [], started: null };
+    buildPc(); showCallUi('Connecting…');
+    call.timeout = setTimeout(() => endCall(true, 'Could not connect'), 30000);
+    send(i.from, { t: 'accept', id: i.id });
+  };
+
+  /* ---------- in-call controls and hanging up ---------- */
+  $('cMute').onclick = () => {
+    if (!call) return;
+    call.muted = !call.muted;
+    call.local.getAudioTracks().forEach(t => { t.enabled = !call.muted; });
+    $('cMute').classList.toggle('off', !!call.muted); $('cMute').innerHTML = call.muted ? '&#128263;' : '&#127908;';
+    $('cMute').setAttribute('aria-label', call.muted ? 'Unmute microphone' : 'Mute microphone');
+  };
+  $('cCam').onclick = () => {
+    if (!call || !call.video) return;
+    call.camOff = !call.camOff;
+    call.local.getVideoTracks().forEach(t => { t.enabled = !call.camOff; });
+    $('cCam').classList.toggle('off', !!call.camOff); $('cCam').innerHTML = call.camOff ? '&#128683;' : '&#128247;';
+    $('cCam').setAttribute('aria-label', call.camOff ? 'Turn camera on' : 'Turn camera off');
+  };
+  $('cEnd').onclick = () => endCall(true, null);
+
+  async function logCall(c, secs) {
+    const label = c.video ? 'video' : 'voice';
+    const body = secs != null ? '📞 ' + (c.video ? 'Video' : 'Voice') + ' call · ' + fmtDur(secs) : '📞 Missed ' + label + ' call';
+    try {
+      const { data } = await nookDb.from('messages').insert({ conversation_id: c.convId, sender_id: me.id, body, kind: 'text' }).select().single();
+      if (data) handleMessage(data);
+    } catch (e) {}
+  }
+  function endCall(notify, msg) {
+    const c = call; if (!c) return; call = null;
+    clearTimeout(c.timeout); clearInterval(c.tick);
+    if (notify) send(c.peer, { t: 'end', id: c.id });
+    try { c.pc && c.pc.close(); } catch (e) {}
+    c.local && c.local.getTracks().forEach(t => t.stop());
+    $('cRemote').srcObject = null; $('cLocal').srcObject = null;
+    $('callOv').classList.remove('open', 'live', 'voice');
+    if (c.role === 'caller') logCall(c, c.started ? Math.round((Date.now() - c.started) / 1000) : null);
+    if (msg) toast(msg);
+  }
+  window.addEventListener('beforeunload', () => { if (call) send(call.peer, { t: 'end', id: call.id }); });
+})();
+</script>
 </body>
 </html>
