@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nook: chats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#121A33; --snow:#F4F6FB; --glacier:#9CC7F5; --marigold:#FFB627; --pine:#1F6F5C; --mist:#DDE5F2; --card:#fff; --muted:#5b6688;
+  --head:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --body:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--body);background:var(--snow);color:var(--ink);overflow:hidden}
+button{font-family:inherit;cursor:pointer;color:inherit}
+:focus-visible{outline:3px solid var(--marigold);outline-offset:2px;border-radius:6px}
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:var(--snow);font-family:var(--head);font-weight:800;font-size:28px;z-index:50}
+.app{display:grid;grid-template-columns:340px 1fr;height:100dvh}
+.app.hidden{visibility:hidden}
+
+/* sidebar */
+.side{background:var(--ink);color:var(--snow);display:flex;flex-direction:column;min-height:0}
+.me{display:flex;align-items:center;gap:10px;padding:18px 18px 12px}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:var(--ink);flex:none;background:var(--glacier)}
+.me b{display:block;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.me small{opacity:.65}
+.me .grow{flex:1;min-width:0}
+.icon-btn{border:0;background:rgba(244,246,251,.12);color:var(--snow);border-radius:12px;padding:9px 12px;font-weight:600;font-size:14px}
+.icon-btn:hover{background:rgba(244,246,251,.22)}
+.new{position:relative}
+.menu{position:absolute;right:0;top:44px;background:var(--card);color:var(--ink);border-radius:14px;padding:6px;min-width:190px;box-shadow:0 18px 40px -12px rgba(0,0,0,.5);z-index:10;display:none}
+.menu.open{display:block}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:10px 12px;border-radius:10px;font-size:15px}
+.menu button:hover{background:var(--mist)}
+.search{padding:6px 18px 12px}
+.search input{width:100%;font:15px var(--body);padding:11px 16px;border-radius:999px;border:0;background:rgba(244,246,251,.12);color:var(--snow)}
+.search input::placeholder{color:rgba(244,246,251,.55)}
+.filters{display:flex;gap:6px;padding:0 18px 12px}
+.filters button{flex:1;border:0;padding:8px 4px;border-radius:999px;background:transparent;color:rgba(244,246,251,.7);font-weight:600;font-size:14px}
+.filters button[aria-selected="true"]{background:var(--snow);color:var(--ink)}
+.list{flex:1;overflow-y:auto;padding:0 8px 12px}
+.item{display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:12px;border-radius:16px}
+.item:hover{background:rgba(244,246,251,.08)}
+.item.active{background:rgba(244,246,251,.16)}
+.item .mid{flex:1;min-width:0}
+.item .row{display:flex;justify-content:space-between;gap:8px}
+.item b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item time{font-size:12px;opacity:.6;flex:none}
+.item .last{font-size:14px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{background:var(--marigold);color:var(--ink);font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;flex:none}
+.empty{padding:24px 16px;opacity:.7;font-size:15px;line-height:1.5}
+.t-group{background:var(--marigold)}.t-broadcast{background:#7fd1b9}
+
+/* main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--snow)}
+.head{display:none;align-items:center;gap:12px;padding:14px 22px;background:var(--card);border-bottom:1px solid var(--mist)}
+.head b{display:block;line-height:1.2}
+.head small{color:var(--muted)}
+.back{display:none;border:0;background:var(--mist);border-radius:12px;padding:8px 12px;font-weight:600}
+.msgs{flex:1;overflow-y:auto;padding:22px;display:none;flex-direction:column;gap:8px}
+.day{align-self:center;font-size:12px;font-weight:600;color:var(--muted);background:var(--mist);padding:4px 12px;border-radius:999px;margin:6px 0}
+.hello{margin:auto;color:var(--muted);text-align:center}
+.msg{max-width:min(520px,78%);padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.45;animation:pop .25s cubic-bezier(.2,1.4,.4,1) both;transform-origin:bottom;overflow-wrap:anywhere;white-space:pre-wrap}
+.msg small{display:block;font-size:11px;opacity:.6;margin-top:3px;text-align:right}
+.msg .who{display:block;font-size:12px;font-weight:600;opacity:.7;margin-bottom:2px}
+.msg.them{background:var(--card);border:1px solid var(--mist);border-bottom-left-radius:5px;align-self:flex-start}
+.msg.me{background:var(--marigold);border-bottom-right-radius:5px;align-self:flex-end}
+.msg.cast{background:var(--pine);color:#fff;border-bottom-right-radius:5px;align-self:flex-end}
+@keyframes pop{from{opacity:0;transform:scale(.8) translateY(8px)}to{opacity:1;transform:none}}
+.composer{display:none;gap:10px;padding:14px 22px;background:var(--card);border-top:1px solid var(--mist)}
+.composer input{flex:1;font:16px var(--body);padding:13px 18px;border-radius:999px;border:2px solid var(--mist);background:var(--snow);color:var(--ink)}
+.composer input:focus{outline:none;border-color:var(--glacier)}
+.send{border:0;border-radius:999px;background:var(--ink);color:var(--snow);font-weight:600;font-size:16px;padding:0 24px}
+.send:hover{background:#26325c}
+.send:disabled{opacity:.5}
+.none{margin:auto;text-align:center;color:var(--muted);max-width:26em;padding:24px}
+.none h2{font-family:var(--head);font-size:28px;color:var(--ink);margin-bottom:6px}
+
+/* new chat dialog + toast */
+.overlay{position:fixed;inset:0;background:rgba(18,26,51,.55);display:none;place-items:center;z-index:40;padding:16px}
+.overlay.open{display:grid}
+.dialog{background:var(--card);border-radius:24px;padding:24px;width:100%;max-width:420px;box-shadow:0 30px 80px -20px rgba(0,0,0,.5)}
+.dialog h3{font-family:var(--head);font-size:24px;font-weight:800;margin-bottom:12px}
+.dialog input{width:100%;font:16px var(--body);padding:13px 16px;border-radius:14px;border:2px solid var(--mist);background:var(--snow);color:var(--ink)}
+.dialog input:focus{outline:none;border-color:var(--glacier)}
+.results{margin:10px 0;max-height:300px;overflow-y:auto;min-height:40px}
+.result{display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:0;background:none;padding:10px;border-radius:14px}
+.result:hover{background:var(--mist)}
+.result small{display:block;color:var(--muted)}
+.hint{color:var(--muted);padding:10px;font-size:15px}
+.close{border:0;background:var(--mist);border-radius:999px;padding:10px 18px;font-weight:600;float:right}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;font-size:15px;z-index:60;display:none}
+
+.msg{cursor:pointer}
+.msg.sticker{background:none;border:0;padding:2px 6px}.msg.sticker .big{font-size:64px;line-height:1.15}
+.msg.gif{padding:4px;background:var(--card);border:1px solid var(--mist);color:var(--ink)}.msg.gif img{display:block;max-width:240px;width:100%;border-radius:14px}
+.msg.flash{box-shadow:0 0 0 3px var(--glacier)}
+.quote{border-left:3px solid var(--pine);background:rgba(18,26,51,.08);border-radius:8px;padding:4px 8px;margin-bottom:6px;font-size:13px}
+.quote b{display:block;font-size:12px}.quote span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;opacity:.8}
+.msg.cast .quote{border-left-color:var(--marigold);background:rgba(255,255,255,.15)}
+.reacts{display:flex;flex-wrap:wrap;gap:4px}.reacts:not(:empty){margin-top:6px}
+.chip{border:1px solid rgba(18,26,51,.2);background:rgba(255,255,255,.75);color:var(--ink);border-radius:999px;padding:1px 8px;font-size:13px}
+.chip.mine{border-color:var(--ink);font-weight:600;background:var(--card)}
+.bar{position:fixed;display:none;gap:2px;background:var(--card);border-radius:999px;padding:4px;box-shadow:0 10px 30px -8px rgba(0,0,0,.4);z-index:30}
+.bar button{border:0;background:none;font-size:22px;border-radius:999px;padding:4px 7px}.bar button:hover{background:var(--mist)}
+.bar .rep{font-size:14px;font-weight:600;padding:4px 12px}
+.replybar{display:none;align-items:center;gap:10px;padding:8px 22px;background:var(--card);border-top:1px solid var(--mist)}
+.replybar .rq{flex:1;min-width:0;border-left:3px solid var(--pine);padding-left:10px;font-size:13px}
+.replybar b{display:block}.replybar span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.replybar button{border:0;background:var(--mist);border-radius:999px;width:32px;height:32px}
+.ro{display:none;text-align:center;padding:16px;background:var(--card);border-top:1px solid var(--mist);color:var(--muted)}
+.picker{display:none;background:var(--card);border-top:1px solid var(--mist);padding:10px 22px;height:280px;flex-direction:column}
+.picker.open{display:flex}
+.ptabs{display:flex;gap:6px;margin-bottom:8px}.ptabs button{border:0;border-radius:999px;padding:6px 16px;background:var(--mist);font-weight:600}
+.ptabs button[aria-selected="true"]{background:var(--ink);color:#fff}
+.pbody{flex:1;overflow-y:auto;min-height:0}.pbody[hidden]{display:none}
+.stk{border:0;background:none;font-size:34px;padding:6px;border-radius:12px}.stk:hover{background:var(--mist)}
+.pbody input{width:100%;font:15px var(--body);padding:9px 14px;border-radius:999px;border:2px solid var(--mist);margin-bottom:8px}
+.gifgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.gifgrid button{border:0;background:var(--mist);border-radius:10px;overflow:hidden;padding:0}.gifgrid img{display:block;width:100%;height:90px;object-fit:cover}
+.gpaste{display:flex;gap:6px;margin-top:8px}.gpaste input{margin:0}.gpaste button{border:0;border-radius:999px;background:var(--ink);color:#fff;padding:0 16px;font-weight:600}
+.tool{border:0;background:var(--mist);border-radius:999px;width:46px;font-size:22px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.pchip{border:0;background:var(--mist);border-radius:999px;padding:5px 12px;font-size:14px}
+.actions{display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+.primary{border:0;border-radius:999px;background:var(--ink);color:#fff;font-weight:600;padding:10px 22px}.primary:disabled{opacity:.5}
+/* ---- part 3 additions ---- */
+.avatar{position:relative}
+.avatar.on::after{content:"";position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#2fd17b;border:2px solid var(--ink)}
+.head .avatar.on::after{border-color:var(--card)}
+.head{cursor:default}.head.info{cursor:pointer}
+.head small.typing,.last.typing{color:var(--pine);font-style:italic;opacity:1}
+.side .last.typing{color:#7fd1b9}
+.msg a{color:inherit;text-decoration:underline}
+.msg code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:rgba(18,26,51,.12);padding:0 5px;border-radius:5px}
+.mention{font-weight:700;color:var(--pine)}.mention.self{background:rgba(255,182,39,.35);border-radius:5px;padding:0 3px}
+.msg.cast .mention{color:var(--marigold)}
+.msg.emo{font-size:36px;line-height:1.2;padding:6px 12px}
+.bar{flex-wrap:wrap;max-width:calc(100vw - 16px);border-radius:22px}
+.bar .rep.del{color:#c0392b}
+.egroups{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}.egroups button{border:0;background:var(--mist);border-radius:999px;padding:3px 10px;font-size:18px}
+.egroups button[aria-selected="true"]{background:var(--marigold)}
+.egrid{display:flex;flex-wrap:wrap}.egrid .stk{font-size:26px;padding:4px 6px}
+.member{display:flex;align-items:center;gap:12px;padding:8px 4px}.member small{display:block;color:var(--muted)}
+.member .tag{margin-left:auto;font-size:12px;font-weight:700;background:var(--marigold);color:var(--ink);border-radius:999px;padding:2px 10px}
+.minfo{max-height:300px;overflow-y:auto;margin:8px 0 12px}
+.danger{border:0;border-radius:999px;background:#fde7e4;color:#a8281b;font-weight:600;padding:10px 20px}
+html[data-theme="dark"]{--snow:#0b1021;--mist:#26304f;--card:#151c36;--muted:#9eaad0}
+html[data-theme="dark"] body{color:#e8ecf8}
+html[data-theme="dark"] .msg.me{color:#121A33}
+html[data-theme="dark"] .mention{color:#7fd1b9}
+html[data-theme="dark"] .msg.me .mention{color:#121A33}
+html[data-theme="dark"] .menu,html[data-theme="dark"] .none h2,html[data-theme="dark"] .msg.gif{color:#e8ecf8}
+html[data-theme="dark"] .composer input,html[data-theme="dark"] .pbody input,html[data-theme="dark"] .dialog input{color:#e8ecf8}
+html[data-theme="dark"] .side{color:#F4F6FB}
+html[data-theme="dark"] .icon-btn,html[data-theme="dark"] .search input{color:#F4F6FB}
+html[data-theme="dark"] .filters button[aria-selected="true"]{background:#F4F6FB;color:#121A33}
+html[data-theme="dark"] .send{color:#F4F6FB;background:#2b3a6e}
+html[data-theme="dark"] .msg.them{border-color:var(--mist)}
+html[data-theme="dark"] .danger{background:#4a1f1b;color:#ffb4aa}
+@media (max-width:860px){
+  .replybar,.picker{padding-left:14px;padding-right:14px}
+  .app{grid-template-columns:1fr}
+  .main{display:none}
+  .app.show-chat .side{display:none}
+  .app.show-chat .main{display:flex}
+  .back{display:block}
+  .msgs,.head,.composer{padding-left:14px;padding-right:14px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="loading" id="loading">nook</div>
+
+<div class="app hidden" id="app">
+  <aside class="side">
+    <div class="me">
+      <div class="avatar" id="meAvatar">?</div>
+      <div class="grow"><b id="meName">...</b><small id="meUser"></small></div>
+      <div class="new">
+        <button class="icon-btn" id="newBtn" aria-haspopup="true">New</button>
+        <div class="menu" id="newMenu" role="menu">
+          <button role="menuitem" data-new="direct">New chat</button>
+          <button role="menuitem" data-new="group">New group</button>
+          <button role="menuitem" data-new="broadcast">New broadcast</button>
+          <button role="menuitem" id="themeBtn">Dark mode</button>
+          <button role="menuitem" id="soundBtn">Sound: on</button>
+        </div>
+      </div>
+      <button class="icon-btn" id="logout">Log out</button>
+    </div>
+    <div class="search"><input id="q" type="search" placeholder="Search your chats" aria-label="Search your chats"></div>
+    <div class="filters" role="tablist">
+      <button role="tab" aria-selected="true" data-f="all">All</button>
+      <button role="tab" aria-selected="false" data-f="direct">Direct</button>
+      <button role="tab" aria-selected="false" data-f="group">Groups</button>
+      <button role="tab" aria-selected="false" data-f="broadcast">Cast</button>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <section class="main" id="main">
+    <div class="none" id="none"><h2>Pick a chat</h2><p>Choose a conversation on the left, or press New to find someone by username.</p></div>
+    <div class="head" id="head">
+      <button class="back" id="back">Back</button>
+      <div class="avatar" id="hAvatar">A</div>
+      <div><b id="hName"></b><small id="hSub"></small></div>
+    </div>
+    <div class="msgs" id="msgs"></div>
+    <div class="replybar" id="replyBar"><div class="rq"><b id="rName"></b><span id="rText"></span></div><button type="button" id="rCancel" aria-label="Cancel reply">&#10005;</button></div>
+    <div class="picker" id="picker">
+      <div class="ptabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-p="stickers">Stickers</button><button type="button" role="tab" aria-selected="false" data-p="emoji">Emoji</button><button type="button" role="tab" aria-selected="false" data-p="gifs">GIFs</button></div>
+      <div class="pbody" id="pStickers"></div>
+      <div class="pbody" id="pEmoji" hidden><div class="egroups" id="eGroups"></div><div class="egrid" id="eGrid"></div></div>
+      <div class="pbody" id="pGifs" hidden>
+        <input id="gifQ" type="search" placeholder="Search GIFs (powered by GIPHY)" aria-label="Search GIFs">
+        <div class="gifgrid" id="gifGrid"></div>
+        <form class="gpaste" id="gifPaste"><input id="gifUrl" placeholder="Or paste a GIF link (https://...)" aria-label="GIF link"><button>Send</button></form>
+      </div>
+    </div>
+    <div class="ro" id="ro">Only the sender can post in this broadcast.</div>
+    <form class="composer" id="composer" autocomplete="off">
+      <button type="button" class="tool" id="pickBtn" aria-label="Stickers and GIFs" aria-expanded="false">&#128522;</button>
+      <input id="text" placeholder="Write a message" aria-label="Message" maxlength="2000">
+      <button class="send" id="sendBtn" type="submit">Send</button>
+    </form>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Start a new chat">
+  <div class="dialog">
+    <h3>Start a chat</h3>
+    <input id="userQ" placeholder="Search by name or username" autocomplete="off">
+    <div class="results" id="results"><p class="hint">Type at least 2 letters.</p></div>
+    <button class="close" id="closeDlg">Close</button>
+  </div>
+</div>
+<div class="overlay" id="gOverlay" role="dialog" aria-modal="true" aria-label="Create">
+  <div class="dialog">
+    <h3 id="gTitle">New group</h3>
+    <input id="gName" maxlength="60" autocomplete="off">
+    <p class="hint" id="gHint"></p>
+    <div class="chips" id="gChips"></div>
+    <input id="gQ" placeholder="Add people by name or username" autocomplete="off" style="margin-top:10px">
+    <div class="results" id="gResults"></div>
+    <div class="actions"><button class="close" id="gClose" type="button" style="float:none">Cancel</button><button class="primary" id="gCreate" type="button">Create</button></div>
+  </div>
+</div>
+<div class="overlay" id="iOverlay" role="dialog" aria-modal="true" aria-label="Chat info">
+  <div class="dialog">
+    <h3 id="iTitle"></h3>
+    <p class="hint" id="iHint"></p>
+    <div class="minfo" id="iMembers"></div>
+    <div class="actions"><button class="close" id="iClose" type="button" style="float:none">Close</button><button class="danger" id="iLeave" type="button">Leave</button></div>
+  </div>
+</div>
+<div class="bar" id="bar" role="toolbar" aria-label="Message actions"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="auth.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const initial = s => (s || '?').trim().charAt(0).toUpperCase();
+let me = null, chats = [], byId = {}, active = null, filter = 'all';
+let online = new Set(), live = null, soundOn = true;
+const GIPHY_KEY = '';   // free key from developers.giphy.com enables GIF search
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.id); toast.id = setTimeout(() => t.style.display = 'none', 3200);
+}
+function fmt(iso){
+  const d = new Date(iso), n = new Date();
+  return d.toDateString() === n.toDateString()
+    ? d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})
+    : d.toLocaleDateString([], {day:'numeric', month:'short'});
+}
+const sortChats = () => chats.sort((a,b) =>
+  new Date(b.last ? b.last.created_at : b.created) - new Date(a.last ? a.last.created_at : a.created));
+
+/* ---------- Load conversations from the database ---------- */
+async function loadChats(){
+  const mine = await nookDb.from('conversation_members')
+    .select('conversation_id, conversations(id,type,name,created_at,created_by)')
+    .eq('user_id', me.id);
+  if(mine.error){ toast('Could not load chats: ' + mine.error.message); return; }
+  const ids = mine.data.map(r => r.conversation_id);
+  if(!ids.length){ chats = []; byId = {}; renderList(); return; }
+
+  const [mem, lastMsgs] = await Promise.all([
+    nookDb.from('conversation_members').select('conversation_id,user_id,profiles(full_name,username)').in('conversation_id', ids),
+    nookDb.from('messages').select('id,conversation_id,sender_id,body,kind,created_at')
+      .in('conversation_id', ids).order('created_at', {ascending:false}).limit(300)
+  ]);
+
+  const old = byId; byId = {};
+  chats = mine.data.map(r => {
+    const c = r.conversations;
+    const members = {};
+    (mem.data || []).filter(m => m.conversation_id === c.id).forEach(m => {
+      members[m.user_id] = { name: m.profiles ? m.profiles.full_name : 'Unknown', username: m.profiles ? m.profiles.username : '' };
+    });
+    const otherId = Object.keys(members).find(id => id !== me.id);
+    const obj = old[c.id] || { id: c.id, msgs: [], loaded: false, unread: 0, last: null };
+    obj.type = c.type; obj.owner = c.created_by; obj.members = members; obj.other = otherId; obj.created = c.created_at;
+    obj.name = c.type === 'direct' ? (otherId ? members[otherId].name : 'Chat') : (c.name || 'Group');
+    const n = Object.keys(members).length;
+    obj.sub = c.type === 'direct'
+      ? (otherId && members[otherId].username ? '@' + members[otherId].username : '')
+      : c.type === 'broadcast'
+        ? (c.created_by === me.id ? (n - 1) + ' recipients' : 'Broadcast by ' + (members[c.created_by] ? members[c.created_by].name : 'someone'))
+        : n + ' members';
+    obj.last = (lastMsgs.data || []).find(m => m.conversation_id === c.id) || obj.last;
+    byId[c.id] = obj;
+    return obj;
+  });
+  sortChats(); renderList();
+}
+
+/* ---------- Sidebar list ---------- */
+function renderList(){
+  const q = $('q').value.trim().toLowerCase();
+  const rows = chats.filter(c => (filter === 'all' || c.type === filter) && c.name.toLowerCase().includes(q));
+  const list = $('list'); list.innerHTML = '';
+  const totalUnread = chats.reduce((a, c) => a + (c.unread || 0), 0);
+  document.title = (totalUnread ? '(' + totalUnread + ') ' : '') + 'Nook: chats';
+  if(!rows.length){
+    list.innerHTML = '<p class="empty">' + (chats.length ? 'Nothing matches.' : 'No chats yet. Press New to find a friend by username.') + '</p>';
+    return;
+  }
+  rows.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'item' + (active && active.id === c.id ? ' active' : '');
+    b.innerHTML = '<div class="avatar t-' + c.type + '"></div><div class="mid"><div class="row"><b></b><time></time></div><div class="row"><span class="last"></span></div></div>';
+    b.querySelector('.avatar').textContent = initial(c.name);
+    b.querySelector('b').textContent = c.name;
+    b.querySelector('time').textContent = c.last ? fmt(c.last.created_at) : '';
+    const lastEl = b.querySelector('.last'), tt = typingText(c);
+    lastEl.textContent = tt || (c.last ? (c.last.sender_id === me.id ? 'You: ' : '') + snippet(c.last) : 'Say hello');
+    if(tt) lastEl.classList.add('typing');
+    if(c.type === 'direct' && online.has(c.other)) b.querySelector('.avatar').classList.add('on');
+    if(c.unread){ const u = document.createElement('span'); u.className = 'badge'; u.textContent = c.unread; b.querySelector('.row:last-child').appendChild(u); }
+    b.onclick = () => openChat(c);
+    list.appendChild(b);
+  });
+}
+document.querySelectorAll('.filters button').forEach(b => b.onclick = () => {
+  filter = b.dataset.f;
+  document.querySelectorAll('.filters button').forEach(x => x.setAttribute('aria-selected', x === b));
+  renderList();
+});
+$('q').addEventListener('input', renderList);
+
+/* ---------- Message area ---------- */
+function addBubble(c, m){
+  const box = $('msgs');
+  const h = box.querySelector('.hello'); if(h) h.remove();
+  const prev = c.msgs[c.msgs.indexOf(m) - 1];
+  if(!prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString()){
+    const d = document.createElement('div'); d.className = 'day';
+    d.textContent = new Date(m.created_at).toDateString() === new Date().toDateString() ? 'Today'
+      : new Date(m.created_at).toLocaleDateString([], {day:'numeric', month:'long'});
+    box.appendChild(d);
+  }
+  const mine = m.sender_id === me.id, kind = m.kind || 'text';
+  const el = document.createElement('div'); el.dataset.id = m.id; el.tabIndex = 0;
+  el.className = 'msg ' + (mine ? (c.type === 'broadcast' ? 'cast' : 'me') : 'them') + (kind !== 'text' ? ' ' + kind : '');
+  if(c.type === 'group' && !mine){
+    const w = document.createElement('span'); w.className = 'who'; w.textContent = nameOf(c, m.sender_id); el.appendChild(w);
+  }
+  if(m.reply_to) el.appendChild(quoteEl(c, m.reply_to));
+  if(kind === 'sticker'){ const s = document.createElement('div'); s.className = 'big'; s.textContent = m.body; el.appendChild(s); }
+  else if(kind === 'gif' && safeUrl(m.body)){
+    const i = new Image(); i.alt = 'GIF'; i.referrerPolicy = 'no-referrer'; i.src = m.body;
+    i.onload = () => { if(box.scrollHeight - box.scrollTop - box.clientHeight < 500) box.scrollTop = box.scrollHeight; };
+    el.appendChild(i);
+  } else if(kind === 'gif') el.appendChild(document.createTextNode('GIF unavailable'));
+  else { el.appendChild(rich(m.body, c)); if(isEmojiOnly(m.body)) el.classList.add('emo'); }
+  const t = document.createElement('small'); t.textContent = fmt(m.created_at); el.appendChild(t);
+  const rx = document.createElement('div'); rx.className = 'reacts'; el.appendChild(rx);
+  box.appendChild(el); renderReacts(m);
+}
+async function openChat(c){
+  if(active) active.draft = $('text').value;
+  active = c; c.unread = 0; $('text').value = c.draft || '';
+  $('none').style.display = 'none';
+  $('head').style.display = 'flex'; $('msgs').style.display = 'flex'; $('composer').style.display = canPost(c) ? 'flex' : 'none'; $('ro').style.display = canPost(c) ? 'none' : 'block'; clearReply(); $('picker').classList.remove('open'); hideBar();
+  $('hName').textContent = c.name; $('head').classList.toggle('info', c.type !== 'direct'); updateHeader();
+    $('app').classList.add('show-chat');
+  renderList();
+
+  const box = $('msgs'); box.innerHTML = '';
+  if(!c.loaded){
+    const { data, error } = await nookDb.from('messages').select('id,conversation_id,sender_id,body,kind,reply_to,created_at,message_reactions(user_id,emoji)')
+      .eq('conversation_id', c.id).order('created_at', {ascending:false}).limit(300);
+    if(error){ toast('Could not load messages'); return; }
+    c.msgs = data.reverse().map(norm); c.loaded = true;
+  }
+  if(active !== c) return;               // user switched chats while loading
+  if(!c.msgs.length) box.innerHTML = '<p class="hello">No messages yet. Say hello!</p>';
+  c.msgs.forEach(m => addBubble(c, m));
+  box.scrollTop = box.scrollHeight;
+  if(canPost(c)) $('text').focus();
+}
+$('back').onclick = () => $('app').classList.remove('show-chat');
+
+/* One function handles every new message (sent by me or received live) */
+async function handleMessage(m){
+  let c = byId[m.conversation_id];
+  if(!c){                                  // someone started a new chat with me
+    await loadChats(); c = byId[m.conversation_id];
+    if(!c) return;
+  }
+  if(c.loaded && c.msgs.some(x => x.id === m.id)) return;   // already shown
+  m.reactions = m.reactions || []; c.last = m;
+  if(c.loaded) c.msgs.push(m);
+  if(active && active.id === c.id){
+    addBubble(c, m); const box = $('msgs'); box.scrollTop = box.scrollHeight;
+  } else if(m.sender_id !== me.id){
+    c.unread++;
+  }
+  if(m.sender_id !== me.id && (document.hidden || !active || active.id !== c.id)) beep();
+  if(c.typing) delete c.typing[m.sender_id];
+  sortChats(); renderList();
+}
+
+$('composer').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = $('text').value.trim();
+  if(!v || !active) return;
+  $('sendBtn').disabled = true;
+  const ok = await sendMessage('text', v);
+  $('sendBtn').disabled = false;
+  if(ok) $('text').value = '';
+});
+
+/* ---------- Replies, reactions, stickers, GIFs ---------- */
+const canPost = c => c.type !== 'broadcast' || c.owner === me.id;
+const nameOf = (c, id) => id === me.id ? 'You' : (c.members[id] ? c.members[id].name : 'Someone');
+const safeUrl = u => { try{ return new URL(u).protocol === 'https:'; }catch(e){ return false; } };
+const snippet = m => m.kind === 'sticker' ? m.body + ' Sticker' : m.kind === 'gif' ? 'GIF' : m.body;
+const norm = m => { m.reactions = m.message_reactions || []; delete m.message_reactions; return m; };
+let replyTo = null;
+
+function quoteEl(c, id){
+  const q = document.createElement('div'); q.className = 'quote';
+  const o = c.msgs.find(x => x.id === id);
+  const n = document.createElement('b'); n.textContent = o ? nameOf(c, o.sender_id) : 'Message';
+  const t = document.createElement('span'); t.textContent = o ? snippet(o) : 'Original message not available';
+  q.append(n, t);
+  if(o) q.onclick = e => { e.stopPropagation(); jumpTo(id); };
+  return q;
+}
+function jumpTo(id){
+  const el = $('msgs').querySelector('[data-id="' + id + '"]'); if(!el) return;
+  el.scrollIntoView({block:'center', behavior:'smooth'});
+  el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1200);
+}
+function setReply(m){
+  replyTo = m; $('rName').textContent = nameOf(active, m.sender_id); $('rText').textContent = snippet(m);
+  $('replyBar').style.display = 'flex'; $('text').focus();
+}
+function clearReply(){ replyTo = null; $('replyBar').style.display = 'none'; }
+$('rCancel').onclick = clearReply;
+
+async function sendMessage(kind, body){
+  if(!active || !canPost(active)) return false;
+  const row = { conversation_id: active.id, sender_id: me.id, body, kind };
+  if(replyTo) row.reply_to = replyTo.id;
+  const { data, error } = await nookDb.from('messages').insert(row).select().single();
+  if(error){ toast('Message not sent: ' + error.message); return false; }
+  clearReply(); handleMessage(data); return true;
+}
+
+function renderReacts(m){
+  const el = $('msgs').querySelector('[data-id="' + m.id + '"]'); if(!el) return;
+  const box = el.querySelector('.reacts'); box.innerHTML = '';
+  const g = {}; m.reactions.forEach(r => (g[r.emoji] = g[r.emoji] || []).push(r.user_id));
+  Object.keys(g).forEach(em => {
+    const mineR = g[em].includes(me.id);
+    const b = document.createElement('button'); b.className = 'chip' + (mineR ? ' mine' : '');
+    b.textContent = em + ' ' + g[em].length; b.setAttribute('aria-pressed', mineR);
+    b.onclick = e => { e.stopPropagation(); toggleReaction(m, em); };
+    box.appendChild(b);
+  });
+}
+async function toggleReaction(m, emoji){
+  const has = m.reactions.find(r => r.user_id === me.id && r.emoji === emoji);
+  const key = { message_id: m.id, user_id: me.id, emoji };
+  if(has){
+    m.reactions = m.reactions.filter(r => r !== has); renderReacts(m);
+    const { error } = await nookDb.from('message_reactions').delete().match(key);
+    if(error){ m.reactions.push(has); renderReacts(m); toast('Could not remove reaction'); }
+  } else {
+    const r = { ...key }; m.reactions.push(r); renderReacts(m);
+    const { error } = await nookDb.from('message_reactions').insert(key);
+    if(error){ m.reactions = m.reactions.filter(x => x !== r); renderReacts(m); toast('Could not react'); }
+  }
+}
+function applyReaction(r, add){
+  for(const c of chats){
+    const m = c.msgs.find(x => x.id === r.message_id); if(!m) continue;
+    const i = m.reactions.findIndex(x => x.user_id === r.user_id && x.emoji === r.emoji);
+    if(add && i < 0) m.reactions.push({ message_id: r.message_id, user_id: r.user_id, emoji: r.emoji });
+    if(!add && i >= 0) m.reactions.splice(i, 1);
+    renderReacts(m); return;
+  }
+}
+
+/* tap a message: react or reply */
+const bar = $('bar'); let barFor = null;
+function hideBar(){ bar.style.display = 'none'; barFor = null; }
+$('msgs').addEventListener('click', e => {
+  const el = e.target.closest('.msg'); if(!el || !active) return;
+  if(barFor === el.dataset.id){ hideBar(); return; }
+  const m = active.msgs.find(x => x.id === el.dataset.id); if(!m) return;
+  bar.innerHTML = '';
+  ['👍','❤️','😂','😮','😢','🙏'].forEach(em => {
+    const b = document.createElement('button'); b.textContent = em; b.setAttribute('aria-label', 'React ' + em);
+    b.onclick = () => { hideBar(); toggleReaction(m, em); }; bar.appendChild(b);
+  });
+  if(canPost(active)){
+    const r = document.createElement('button'); r.className = 'rep'; r.textContent = 'Reply';
+    r.onclick = () => { hideBar(); setReply(m); }; bar.appendChild(r);
+  }
+  if((m.kind || 'text') === 'text'){
+    const cp = document.createElement('button'); cp.className = 'rep'; cp.textContent = 'Copy';
+    cp.onclick = async () => { hideBar(); try{ await navigator.clipboard.writeText(m.body); toast('Copied'); }catch(err){ toast('Could not copy'); } };
+    bar.appendChild(cp);
+  }
+  if(m.sender_id === me.id){
+    const dl = document.createElement('button'); dl.className = 'rep del'; dl.textContent = 'Delete';
+    dl.onclick = () => { hideBar(); deleteMessage(m); }; bar.appendChild(dl);
+  }
+  bar.style.display = 'flex'; barFor = m.id;
+  const q = el.getBoundingClientRect(), w = bar.offsetWidth;
+  bar.style.top = (q.top > 60 ? q.top - 52 : q.bottom + 8) + 'px';
+  bar.style.left = Math.max(8, Math.min(innerWidth - w - 8, el.classList.contains('them') ? q.left : q.right - w)) + 'px';
+});
+$('msgs').addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.classList.contains('msg')) e.target.click(); });
+$('msgs').addEventListener('scroll', hideBar);
+document.addEventListener('click', e => { if(!e.target.closest('.msg') && !e.target.closest('#bar')) hideBar(); });
+
+/* sticker + GIF picker */
+const STICKERS = '😀 😂 🥹 😍 😎 🤩 😭 🥳 😴 🤯 😡 🙄 ❤️ 💙 💛 💚 🔥 ✨ 💯 🎉 👏 🙌 💪 🙏 🐶 🐱 🦊 🐼 🐸 🦄 🐧 🐢 🍕 🍔 🍟 🍩 🍿 ☕ 🍓 🍜'.split(' ');
+STICKERS.forEach(em => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'stk'; b.textContent = em; b.setAttribute('aria-label', 'Send sticker ' + em);
+  b.onclick = async () => { if(await sendMessage('sticker', em)) $('picker').classList.remove('open'); };
+  $('pStickers').appendChild(b);
+});
+let gifSeq = 0, gifTimer, gifsShown = false;
+$('pickBtn').onclick = () => {
+  const o = $('picker').classList.toggle('open'); $('pickBtn').setAttribute('aria-expanded', o);
+};
+document.querySelectorAll('.ptabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.ptabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  $('pStickers').hidden = b.dataset.p !== 'stickers'; $('pEmoji').hidden = b.dataset.p !== 'emoji'; $('pGifs').hidden = b.dataset.p !== 'gifs';
+  if(b.dataset.p === 'gifs' && !gifsShown){ gifsShown = true; loadGifs(''); }
+});
+$('gifQ').addEventListener('input', () => { clearTimeout(gifTimer); gifTimer = setTimeout(() => loadGifs($('gifQ').value.trim()), 350); });
+async function loadGifs(q){
+  const g = $('gifGrid'), n = ++gifSeq;
+  if(!GIPHY_KEY){ g.innerHTML = '<p class="hint">Add a free Giphy API key at the top of this file to search GIFs. You can still paste a GIF link below.</p>'; return; }
+  g.innerHTML = '<p class="hint">Loading...</p>';
+  try{
+    const u = 'https://api.giphy.com/v1/gifs/' + (q ? 'search' : 'trending') + '?api_key=' + encodeURIComponent(GIPHY_KEY) + '&limit=24&rating=g' + (q ? '&q=' + encodeURIComponent(q) : '');
+    const j = await (await fetch(u)).json(); if(n !== gifSeq) return;
+    g.innerHTML = ''; if(!j.data.length){ g.innerHTML = '<p class="hint">No GIFs found.</p>'; return; }
+    j.data.forEach(x => {
+      const b = document.createElement('button'); b.type = 'button';
+      const i = new Image(); i.src = x.images.fixed_height_small.url; i.alt = x.title || 'GIF'; b.appendChild(i);
+      b.onclick = async () => { if(await sendMessage('gif', x.images.fixed_height.url)) $('picker').classList.remove('open'); };
+      g.appendChild(b);
+    });
+  }catch(err){ if(n === gifSeq) g.innerHTML = '<p class="hint">Could not load GIFs.</p>'; }
+}
+$('gifPaste').addEventListener('submit', async e => {
+  e.preventDefault(); const u = $('gifUrl').value.trim();
+  if(!safeUrl(u)){ toast('Paste a link starting with https://'); return; }
+  if(await sendMessage('gif', u)){ $('gifUrl').value = ''; $('picker').classList.remove('open'); }
+});
+
+/* ---------- New group / broadcast ---------- */
+let gMode = 'group'; const gPick = new Map();
+function drawChips(){
+  const b = $('gChips'); b.innerHTML = '';
+  gPick.forEach((u, id) => {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'pchip'; c.textContent = u.full_name + ' ✕';
+    c.setAttribute('aria-label', 'Remove ' + u.full_name); c.onclick = () => { gPick.delete(id); drawChips(); }; b.appendChild(c);
+  });
+}
+function openGroup(mode){
+  gMode = mode; gPick.clear(); drawChips();
+  const g = mode === 'group';
+  $('gTitle').textContent = g ? 'New group' : 'New broadcast';
+  $('gName').value = ''; $('gName').placeholder = g ? 'Group name' : 'Broadcast name';
+  $('gHint').textContent = g ? 'Everyone in a group can post.' : 'Only you can post. Recipients can read and react, but not post.';
+  $('gQ').value = ''; $('gResults').innerHTML = '<p class="hint">Type at least 2 letters.</p>';
+  $('gOverlay').classList.add('open'); $('gName').focus();
+}
+let gTimer;
+$('gQ').addEventListener('input', () => { clearTimeout(gTimer); gTimer = setTimeout(() => runSearch('gQ', 'gResults', u => {
+  gPick.set(u.id, u); drawChips(); $('gQ').value = ''; $('gResults').innerHTML = '<p class="hint">Added. Search for more people.</p>'; $('gQ').focus();
+}), 250); });
+$('gClose').onclick = () => $('gOverlay').classList.remove('open');
+$('gOverlay').addEventListener('click', e => { if(e.target === $('gOverlay')) $('gOverlay').classList.remove('open'); });
+$('gCreate').onclick = async () => {
+  const name = $('gName').value.trim();
+  if(!name){ toast('Give it a name'); return; }
+  if(!gPick.size){ toast('Add at least one person'); return; }
+  $('gCreate').disabled = true;
+  const { data: cid, error } = await nookDb.rpc('create_conversation', { p_kind: gMode, p_title: name, p_members: [...gPick.keys()] });
+  $('gCreate').disabled = false;
+  if(error){ toast(error.message); return; }
+  $('gOverlay').classList.remove('open');
+  await loadChats(); if(byId[cid]) openChat(byId[cid]);
+};
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ $('gOverlay').classList.remove('open'); $('picker').classList.remove('open'); hideBar(); } });
+
+/* ---------- Start a new chat: search users ---------- */
+const dlg = $('overlay');
+function openDialog(){ dlg.classList.add('open'); $('userQ').value = ''; $('results').innerHTML = '<p class="hint">Type at least 2 letters.</p>'; $('userQ').focus(); }
+function closeDialog(){ dlg.classList.remove('open'); }
+$('closeDlg').onclick = closeDialog;
+dlg.addEventListener('click', e => { if(e.target === dlg) closeDialog(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDialog(); });
+
+let searchTimer;
+$('userQ').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(searchUsers, 250);
+});
+const searchUsers = () => runSearch('userQ', 'results', startChat);
+async function runSearch(qId, boxId, pick){
+  const clean = $(qId).value.replace(/[%,()*\\]/g, ' ').trim();
+  const box = $(boxId);
+  if(clean.length < 2){ box.innerHTML = '<p class="hint">Type at least 2 letters.</p>'; return; }
+  const { data, error } = await nookDb.from('profiles').select('id,full_name,username')
+    .or('username.ilike.' + clean + ',full_name.ilike.' + clean + '')
+    .neq('id', me.id).limit(8);
+  box.innerHTML = '';
+  if(error){ box.innerHTML = '<p class="hint">Search failed. Try again.</p>'; return; }
+  if(!data.length){ box.innerHTML = '<p class="hint">No one found. Ask your friend to sign up first.</p>'; return; }
+  data.forEach(u => {
+    const b = document.createElement('button'); b.className = 'result';
+    b.innerHTML = '<div class="avatar"></div><div><b></b><small></small></div>';
+    b.querySelector('.avatar').textContent = initial(u.full_name);
+    b.querySelector('b').textContent = u.full_name;
+    b.querySelector('small').textContent = '@' + u.username;
+    b.onclick = () => pick(u);
+    box.appendChild(b);
+  });
+}
+async function startChat(u){
+  const { data: cid, error } = await nookDb.rpc('start_direct_chat', { other: u.id });
+  if(error){ toast(error.message); return; }
+  closeDialog();
+  await loadChats();
+  if(byId[cid]) openChat(byId[cid]);
+}
+
+/* ---------- New menu ---------- */
+$('newBtn').onclick = e => { e.stopPropagation(); $('newMenu').classList.toggle('open'); };
+document.addEventListener('click', () => $('newMenu').classList.remove('open'));
+document.querySelectorAll('[data-new]').forEach(b => b.onclick = () => {
+  if(b.dataset.new === 'direct') openDialog();
+  else openGroup(b.dataset.new);
+});
+
+
+/* ---------- Part 3: rich text, emoji, typing, presence, delete, group info, theme, sound ---------- */
+const EMOJI_SETS = {
+  '😀': '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😒 😞 😔 😢 😭 😤 😡 🤬 🤯 😱 😴 🤔 🫡 🤗 🙄 😬 🥲',
+  '👍': '👍 👎 👌 ✌️ 🤞 🤟 🤘 👏 🙌 🙏 💪 👋 🤝 ☝️ 👉 👈 🫶 ✍️ 🤌 🫰 💅 🧠 👀 👅',
+  '❤️': '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💯 ✨ 🔥 ⭐ 🌟 ⚡ 🎉 🎊 🎁 🏆 🥇',
+  '🐶': '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐧 🐦 🦄 🐝 🦋 🐢 🐙 🐬 🌸 🌹 🌻 🌈 ☀️ 🌙 ⛄',
+  '🍕': '🍕 🍔 🍟 🌭 🌮 🍜 🍣 🍩 🍪 🎂 🍫 🍿 🍓 🍎 🍉 🍌 ☕ 🧋 🍺 🥂 ⚽ 🏏 🎮 🎧 🎬 📚 💻 📱 🚀'
+};
+const eGroups = $('eGroups'), eGrid = $('eGrid');
+function showEmojiSet(k){
+  eGroups.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.dataset.k === k));
+  eGrid.innerHTML = '';
+  EMOJI_SETS[k].split(' ').forEach(em => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'stk'; b.textContent = em; b.setAttribute('aria-label', 'Insert ' + em);
+    b.onclick = () => insertAtCursor(em); eGrid.appendChild(b);
+  });
+}
+Object.keys(EMOJI_SETS).forEach(k => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = k; b.dataset.k = k; b.setAttribute('aria-label', 'Emoji group ' + k);
+  b.onclick = () => showEmojiSet(k); eGroups.appendChild(b);
+});
+showEmojiSet('😀');
+function insertAtCursor(t){
+  const i = $('text'), a = i.selectionStart == null ? i.value.length : i.selectionStart, z = i.selectionEnd == null ? a : i.selectionEnd;
+  if(i.value.length + t.length > i.maxLength) return;
+  i.value = i.value.slice(0, a) + t + i.value.slice(z);
+  i.focus(); i.setSelectionRange(a + t.length, a + t.length);
+  i.dispatchEvent(new Event('input'));
+}
+
+/* *bold*  italic  italic  ⁠ code ⁠  links  @mentions */
+const isEmojiOnly = t => { const x = t.trim(); return x.length > 0 && x.length <= 16 && /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u.test(x) && Array.from(x.replace(/\s/g, '')).length <= 4; };
+function rich(text, c){
+  const frag = document.createDocumentFragment();
+  const re = /(https?:\/\/[^\s<]+|⁠ [^ ⁠\n]+`|\\[^\n]+\\|\[^\n]+\|[^\n]+|@[A-Za-z0-9]{2,})/g;
+  let last = 0, m;
+  const add = (tag, str, cls) => { const e = document.createElement(tag); if(cls) e.className = cls; e.textContent = str; frag.appendChild(e); return e; };
+  while((m = re.exec(text))){
+    if(m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const tok = m[0]; last = m.index + tok.length;
+    if(tok[0] === 'h'){
+      const url = tok.replace(/[.,!?)]+$/, ''); last -= tok.length - url.length;
+      if(safeUrl(url) || url.startsWith('http://')){ const a = add('a', url); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.onclick = e => e.stopPropagation(); }
+      else frag.appendChild(document.createTextNode(url));
+    } else if(tok[0] === '`') add('code', tok.slice(1, -1));
+    else if(tok.startsWith('**')) add('b', tok.slice(2, -2));
+    else if(tok[0] === '*' || tok[0] === '_') add('i', tok.slice(1, -1));
+    else {
+      const uname = tok.slice(1).toLowerCase();
+      const hit = Object.entries(c.members).find(([id, u]) => (u.username || '').toLowerCase() === uname);
+      if(hit) add('span', tok, 'mention' + (hit[0] === me.id ? ' self' : ''));
+      else frag.appendChild(document.createTextNode(tok));
+    }
+  }
+  if(last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+  return frag;
+}
+
+/* typing + presence */
+function typingText(c){
+  const n = c.typing ? Object.values(c.typing) : [];
+  if(!n.length) return '';
+  return c.type === 'direct' ? 'typing…' : (n.length > 2 ? 'Several people are typing…' : n.join(', ') + (n.length > 1 ? ' are typing…' : ' is typing…'));
+}
+function updateHeader(){
+  if(!active) return;
+  const c = active, tt = typingText(c), sub = $('hSub');
+  const av = $('hAvatar'); av.textContent = initial(c.name);
+  av.className = 'avatar t-' + c.type + (c.type === 'direct' && online.has(c.other) ? ' on' : '');
+  let base = c.sub;
+  if(c.type === 'direct' && online.has(c.other)) base = (c.sub ? c.sub + ' · ' : '') + 'online';
+  if(c.type === 'group'){ const k = Object.keys(c.members).filter(id => online.has(id)).length; if(k) base += ' · ' + k + ' online'; }
+  sub.textContent = tt || base; sub.classList.toggle('typing', !!tt);
+}
+let lastTypingSent = 0;
+$('text').addEventListener('input', () => {
+  if(!live || !active || !$('text').value || Date.now() - lastTypingSent < 2000) return;
+  lastTypingSent = Date.now();
+  live.send({ type: 'broadcast', event: 'typing', payload: { c: active.id, u: me.id, n: (me.name || '').split(' ')[0] } });
+});
+function onTyping(p){
+  if(!p || p.u === me.id) return;
+  const c = byId[p.c]; if(!c) return;
+  c.typing = c.typing || {}; c.typing[p.u] = p.n || 'Someone';
+  clearTimeout((c.tt = c.tt || {})[p.u]);
+  c.tt[p.u] = setTimeout(() => { delete c.typing[p.u]; renderList(); if(active === c) updateHeader(); }, 3500);
+  renderList(); if(active === c) updateHeader();
+}
+
+/* delete my own message */
+async function deleteMessage(m){
+  if(!confirm('Delete this message for everyone?')) return;
+  const { error } = await nookDb.from('messages').delete().eq('id', m.id);
+  if(error){ toast('Could not delete: ' + error.message); return; }
+  removeMessage(m.id);
+}
+function removeMessage(id){
+  for(const c of chats){
+    const i = c.msgs.findIndex(x => x.id === id); if(i < 0) continue;
+    c.msgs.splice(i, 1);
+    c.msgs.forEach(x => { if(x.reply_to === id) x.reply_to = null; });
+    if(c.last && c.last.id === id) c.last = c.msgs[c.msgs.length - 1] || null;
+    if(active === c) openChat(c);
+    renderList(); return;
+  }
+}
+
+/* group / broadcast info */
+$('head').addEventListener('click', e => { if(e.target.closest('.back') || !active || active.type === 'direct') return; openInfo(active); });
+function openInfo(c){
+  $('iTitle').textContent = c.name;
+  $('iHint').textContent = (c.type === 'broadcast' ? 'Broadcast · ' : 'Group · ') + Object.keys(c.members).length + ' people';
+  const box = $('iMembers'); box.innerHTML = '';
+  Object.entries(c.members).sort((a, b) => (b[0] === c.owner) - (a[0] === c.owner)).forEach(([id, u]) => {
+    const r = document.createElement('div'); r.className = 'member';
+    r.innerHTML = '<div class="avatar"></div><div><b></b><small></small></div>';
+    const av = r.querySelector('.avatar'); av.textContent = initial(u.name); if(online.has(id)) av.classList.add('on');
+    r.querySelector('b').textContent = u.name + (id === me.id ? ' (you)' : '');
+    r.querySelector('small').textContent = (u.username ? '@' + u.username : '') + (online.has(id) ? ' · online' : '');
+    if(id === c.owner){ const t = document.createElement('span'); t.className = 'tag'; t.textContent = c.type === 'broadcast' ? 'Sender' : 'Creator'; r.appendChild(t); }
+    box.appendChild(r);
+  });
+  $('iLeave').textContent = 'Leave ' + (c.type === 'broadcast' ? 'broadcast' : 'group');
+  $('iOverlay').classList.add('open');
+}
+$('iClose').onclick = () => $('iOverlay').classList.remove('open');
+$('iOverlay').addEventListener('click', e => { if(e.target === $('iOverlay')) $('iOverlay').classList.remove('open'); });
+$('iLeave').onclick = async () => {
+  const c = active; if(!c || !confirm('Leave "' + c.name + '"?')) return;
+  const { error } = await nookDb.from('conversation_members').delete().eq('conversation_id', c.id).eq('user_id', me.id);
+  if(error){ toast('Could not leave: ' + error.message); return; }
+  $('iOverlay').classList.remove('open');
+  active = null; $('head').style.display = $('msgs').style.display = $('composer').style.display = $('ro').style.display = 'none';
+  $('none').style.display = ''; $('app').classList.remove('show-chat');
+  await loadChats(); toast('You left ' + c.name);
+};
+document.addEventListener('keydown', e => { if(e.key === 'Escape') $('iOverlay').classList.remove('open'); });
+
+/* theme + sound (remembered on this device) */
+const store = { get: k => { try{ return localStorage.getItem(k); }catch(e){ return null; } }, set: (k, v) => { try{ localStorage.setItem(k, v); }catch(e){} } };
+function applyTheme(t){ document.documentElement.dataset.theme = t; $('themeBtn').textContent = t === 'dark' ? 'Light mode' : 'Dark mode'; }
+applyTheme(store.get('nook-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+$('themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(t); store.set('nook-theme', t); };
+soundOn = store.get('nook-sound') !== 'off'; $('soundBtn').textContent = 'Sound: ' + (soundOn ? 'on' : 'off');
+$('soundBtn').onclick = () => { soundOn = !soundOn; store.set('nook-sound', soundOn ? 'on' : 'off'); $('soundBtn').textContent = 'Sound: ' + (soundOn ? 'on' : 'off'); };
+let actx;
+function beep(){
+  if(!soundOn) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(.001, actx.currentTime); g.gain.exponentialRampToValueAtTime(.15, actx.currentTime + .02); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .25);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + .26);
+  }catch(e){}
+}
+
+/* ---------- Start up ---------- */
+$('logout').onclick = async () => { await nookDb.auth.signOut(); location.href = 'index.html'; };
+(async function init(){
+  try{
+    const { data:{ session } } = await nookDb.auth.getSession();
+    if(!session){ location.replace('index.html'); return; }
+    const { data:p } = await nookDb.from('profiles').select('full_name, username').eq('id', session.user.id).maybeSingle();
+    me = { id: session.user.id, name: p ? p.full_name : session.user.email, username: p ? p.username : '' };
+  }catch(err){ location.replace('index.html'); return; }
+
+  $('meName').textContent = me.name;
+  $('meUser').textContent = me.username ? '@' + me.username : '';
+  $('meAvatar').textContent = initial(me.name);
+
+  await loadChats();
+  $('app').classList.remove('hidden');
+  $('loading').remove();
+
+  // Live delivery: new messages from anyone in my conversations
+  nookDb.channel('nook-messages')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => handleMessage(p.new))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, p => applyReaction(p.new, true))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, p => applyReaction(p.old, false))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, p => removeMessage(p.old.id))
+    .subscribe();
+
+  // Presence (who is online) + typing indicators. These use Realtime broadcast, no database tables needed.
+  live = nookDb.channel('nook-live', { config: { presence: { key: me.id }, broadcast: { self: false } } });
+  live.on('presence', { event: 'sync' }, () => { online = new Set(Object.keys(live.presenceState())); renderList(); updateHeader(); })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => onTyping(payload))
+      .subscribe(st => { if(st === 'SUBSCRIBED') live.track({ at: Date.now() }); });
+})();
+</script>
+</body>
+</html>

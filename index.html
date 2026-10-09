@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nook: chat one-to-one, in groups, or with everyone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#121A33; --snow:#F4F6FB; --glacier:#9CC7F5; --marigold:#FFB627; --pine:#1F6F5C; --mist:#DDE5F2;
+  --head:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --body:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--body);background:var(--snow);color:var(--ink);line-height:1.55;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:3px solid var(--marigold);outline-offset:3px;border-radius:6px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* nav */
+nav{display:flex;justify-content:space-between;align-items:center;padding:22px 0}
+.logo{font-family:var(--head);font-weight:800;font-size:26px;letter-spacing:-.02em}
+.logo i{display:inline-block;width:12px;height:12px;background:var(--marigold);border-radius:50%;margin-left:3px}
+.navlinks{display:flex;gap:26px;align-items:center;font-weight:500}
+.btn{display:inline-block;border:0;cursor:pointer;font:600 16px var(--body);padding:13px 24px;border-radius:999px;background:var(--ink);color:var(--snow);transition:transform .15s,background .15s}
+.btn:hover{transform:translateY(-2px);background:#26325c}
+.btn.alt{background:var(--marigold);color:var(--ink)}
+.btn.alt:hover{background:#ffc247}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;padding:56px 0 96px}
+h1{font-family:var(--head);font-weight:800;font-size:clamp(42px,6.2vw,76px);line-height:.98;letter-spacing:-.035em}
+.lede{font-size:19px;max-width:30em;margin:22px 0 32px;color:#3a4566}
+.cta{display:flex;gap:14px;flex-wrap:wrap}
+.hero-note{margin-top:20px;font-size:14px;color:#5b6688}
+
+/* chat demo: the one memorable moment */
+.demo{background:#fff;border-radius:28px;box-shadow:0 30px 80px -30px rgba(18,26,51,.45);overflow:hidden;border:1px solid var(--mist);max-width:460px;width:100%;justify-self:center}
+.demo-top{background:var(--ink);color:var(--snow);padding:16px 20px;display:flex;align-items:center;gap:12px}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--glacier);color:var(--ink);display:grid;place-items:center;font-weight:700}
+.demo-top b{display:block;line-height:1.2}
+.demo-top small{opacity:.7}
+.tabs{display:flex;gap:6px;padding:12px 14px;background:var(--mist)}
+.tab{flex:1;border:0;cursor:pointer;font:600 14px var(--body);padding:9px 6px;border-radius:12px;background:transparent;color:var(--ink);transition:background .2s}
+.tab[aria-selected="true"]{background:#fff;box-shadow:0 2px 8px rgba(18,26,51,.12)}
+.feed{height:340px;padding:18px;display:flex;flex-direction:column;gap:10px;overflow:hidden;justify-content:flex-end;background:linear-gradient(#fff,#f7f9fe)}
+.msg{max-width:78%;padding:10px 14px;border-radius:18px;font-size:15px;animation:pop .35s cubic-bezier(.2,1.4,.4,1) both;transform-origin:bottom}
+.msg small{display:block;font-size:12px;font-weight:600;opacity:.65;margin-bottom:2px}
+.msg.them{background:var(--mist);border-bottom-left-radius:5px;align-self:flex-start}
+.msg.me{background:var(--marigold);border-bottom-right-radius:5px;align-self:flex-end}
+.msg.cast{background:var(--pine);color:#fff;align-self:stretch;max-width:100%;border-radius:16px;text-align:center}
+.typing{align-self:flex-start;background:var(--mist);padding:12px 16px;border-radius:18px;display:flex;gap:5px}
+.typing span{width:7px;height:7px;border-radius:50%;background:#6a7597;animation:bob 1s infinite}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+.demo-input{display:flex;gap:10px;padding:14px;border-top:1px solid var(--mist)}
+.demo-input div{flex:1;background:var(--snow);border-radius:999px;padding:11px 18px;color:#8a93ad;font-size:15px}
+@keyframes pop{from{opacity:0;transform:scale(.6) translateY(12px)}to{opacity:1;transform:none}}
+@keyframes bob{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* floating hero shapes */
+.hero{position:relative}
+.blob{position:absolute;border-radius:50%;filter:blur(2px);opacity:.55;z-index:-1;animation:drift 12s ease-in-out infinite}
+.b1{width:220px;height:220px;background:var(--glacier);top:10px;right:-40px}
+.b2{width:120px;height:120px;background:var(--marigold);bottom:40px;left:42%;animation-delay:-4s}
+@keyframes drift{50%{transform:translate(24px,-30px)}}
+
+/* modes */
+.modes{background:var(--ink);color:var(--snow);padding:96px 0}
+.modes h2,.signup h2{font-family:var(--head);font-weight:800;font-size:clamp(32px,4.4vw,52px);letter-spacing:-.03em;line-height:1.02}
+.mode{display:grid;grid-template-columns:1fr 1.4fr;gap:40px;padding:34px 0;border-top:1px solid rgba(244,246,251,.2)}
+.mode:first-of-type{margin-top:44px}
+.mode h3{font-family:var(--head);font-size:30px;font-weight:800}
+.mode p{color:#c7cfe4;max-width:38em}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.tags span{font-size:13px;padding:5px 12px;border-radius:999px;background:rgba(156,199,245,.16);color:var(--glacier)}
+
+/* signup layout */
+.signup{padding:96px 0}
+.signup-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
+.signup p.lede{margin-bottom:0}
+.card{background:#fff;border-radius:24px;padding:32px;border:1px solid var(--mist);box-shadow:0 24px 60px -34px rgba(18,26,51,.4)}
+.switch{display:flex;background:var(--mist);border-radius:999px;padding:5px;margin-bottom:24px}
+.switch button{flex:1;border:0;cursor:pointer;font:600 15px var(--body);padding:10px;border-radius:999px;background:transparent;color:var(--ink)}
+.switch button[aria-selected="true"]{background:#fff;box-shadow:0 2px 8px rgba(18,26,51,.12)}
+label{display:block;font-weight:600;font-size:14px;margin:0 0 6px}
+input{width:100%;font:16px var(--body);padding:13px 16px;border-radius:14px;border:2px solid var(--mist);background:var(--snow);margin-bottom:18px;color:var(--ink)}
+input:focus{outline:none;border-color:var(--glacier)}
+.card .btn{width:100%}
+.status{margin-top:14px;font-size:14px;min-height:22px}
+.status.err{color:#b3261e}.status.ok{color:var(--pine)}
+.hide{display:none}
+footer{padding:36px 0;text-align:center;font-size:14px;color:#5b6688}
+
+@media (max-width:860px){
+  .hero,.signup-grid,.mode{grid-template-columns:1fr}
+  .hero{padding:32px 0 64px}
+  .navlinks a.hide-sm{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <nav>
+    <a class="logo" href="#top" aria-label="Nook home">nook<i></i></a>
+    <div class="navlinks">
+      <a class="hide-sm" href="#modes">Ways to chat</a>
+      <a class="btn" href="#signup">Sign up</a>
+    </div>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="wrap hero">
+    <span class="blob b1"></span><span class="blob b2"></span>
+    <div>
+      <h1>Talk to one person, a whole group, or everyone at once.</h1>
+      <p class="lede">Nook is a chat space for your campus. Message a friend, start a group for your project team, or send one announcement to hundreds of people.</p>
+      <div class="cta">
+        <a class="btn alt" href="#signup">Create your account</a>
+        <a class="btn ghost" href="#modes">See how it works</a>
+      </div>
+      <p class="hero-note">Free to join. Takes under a minute.</p>
+    </div>
+
+    <div class="demo" aria-label="Live chat preview">
+      <div class="demo-top">
+        <div class="avatar" id="dAvatar">A</div>
+        <div><b id="dName">Aarav</b><small id="dSub">online</small></div>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-mode="direct">Direct</button>
+        <button class="tab" role="tab" aria-selected="false" data-mode="group">Group</button>
+        <button class="tab" role="tab" aria-selected="false" data-mode="broadcast">Broadcast</button>
+      </div>
+      <div class="feed" id="feed" aria-live="polite"></div>
+      <div class="demo-input"><div>Write a message</div><button class="btn alt" style="padding:10px 18px" tabindex="-1">Send</button></div>
+    </div>
+  </section>
+
+  <section class="modes" id="modes">
+    <div class="wrap">
+      <h2>Three ways to talk, one place.</h2>
+      <div class="mode">
+        <h3>Direct messages</h3>
+        <div><p>Private one-to-one chat with typing indicators, read receipts and an online status, so you know when someone has seen your message.</p>
+          <div class="tags"><span>Typing indicator</span><span>Read receipts</span><span>Online status</span></div></div>
+      </div>
+      <div class="mode">
+        <h3>Group chats</h3>
+        <div><p>Create a group for your hackathon team, a club or a hostel floor. Add members, pin important messages and react with emojis.</p>
+          <div class="tags"><span>Add and remove members</span><span>Pinned messages</span><span>Emoji reactions</span></div></div>
+      </div>
+      <div class="mode">
+        <h3>Broadcast</h3>
+        <div><p>Send one message to many people at once. Everyone gets it in their own inbox, and replies come back to you privately.</p>
+          <div class="tags"><span>One-to-many</span><span>Private replies</span><span>Schedule for later</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="signup" id="signup">
+    <div class="wrap signup-grid">
+      <div>
+        <h2>Make your Nook account.</h2>
+        <p class="lede">Pick a username, and your friends can find you and start chatting right away.</p>
+      </div>
+      <div class="card">
+        <div class="switch" role="tablist">
+          <button role="tab" aria-selected="true" data-form="signup">Sign up</button>
+          <button role="tab" aria-selected="false" data-form="login">Log in</button>
+        </div>
+        <form id="authForm" novalidate>
+          <div id="nameFields">
+            <label for="fullname">Full name</label>
+            <input id="fullname" name="fullname" autocomplete="name" placeholder="Your name">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" placeholder="e.g. aarav_b25">
+          </div>
+          <label for="email">College email</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@students.iitmandi.ac.in">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+          <button class="btn" id="submitBtn" type="submit">Create account</button>
+          <p class="status" id="status" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>Nook, built at First Commit, IIT Mandi.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="auth.js"></script>
+<script>
+/* ---------- Chat preview animation ---------- */
+const scripts = {
+  direct:{name:'Aarav',sub:'online',letter:'A',msgs:[
+    ['them','Did you finish the login page?'],
+    ['me','Almost! Sending you the link now.'],
+    ['them','Nice. Let\'s demo it at 4.'],
+    ['me','Deal. Seen? 👀']]},
+  group:{name:'Team First Commit',sub:'4 members',letter:'T',msgs:[
+    ['them','Riya: I\'ll take the frontend.'],
+    ['them','Kabir: Database is mine.'],
+    ['me','I\'ll write the pitch.'],
+    ['them','Riya: 🔥 Pinned the plan.']]},
+  broadcast:{name:'Broadcast: Freshers',sub:'sent to 240 people',letter:'B',msgs:[
+    ['cast','Hackathon starts at 9 AM sharp. Bring your laptop and charger.'],
+    ['them','Meera (private reply): Is lunch included?'],
+    ['me','Yes, lunch and snacks are included.']]}
+};
+const feed = document.getElementById('feed');
+let token = 0;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function play(mode){
+  const my = ++token, s = scripts[mode];
+  document.getElementById('dName').textContent = s.name;
+  document.getElementById('dSub').textContent = s.sub;
+  document.getElementById('dAvatar').textContent = s.letter;
+  feed.innerHTML = '';
+  while(my === token){
+    for(const [who,text] of s.msgs){
+      if(my !== token) return;
+      let typing;
+      if(who !== 'me'){
+        typing = document.createElement('div');
+        typing.className = 'typing';
+        typing.innerHTML = '<span></span><span></span><span></span>';
+        feed.appendChild(typing);
+        await wait(1000);
+        typing.remove();
+      } else { await wait(700); }
+      if(my !== token) return;
+      const m = document.createElement('div');
+      m.className = 'msg ' + who;
+      m.textContent = text;
+      feed.appendChild(m);
+      while(feed.children.length > 5) feed.removeChild(feed.firstChild);
+      await wait(900);
+    }
+    await wait(2200);
+    if(my !== token) return;
+    feed.innerHTML = '';
+  }
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t));
+  play(t.dataset.mode);
+}));
+play('direct');
+
+/* ---------- Sign up / Log in layout (database comes in Part 2) ---------- */
+let mode = 'signup';
+const form = document.getElementById('authForm'),
+      status = document.getElementById('status'),
+      btn = document.getElementById('submitBtn');
+document.querySelectorAll('.switch button').forEach(b => b.addEventListener('click', () => {
+  mode = b.dataset.form;
+  document.querySelectorAll('.switch button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.getElementById('nameFields').classList.toggle('hide', mode === 'login');
+  btn.textContent = mode === 'signup' ? 'Create account' : 'Log in';
+  status.textContent = ''; status.className = 'status';
+}));
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  status.className = 'status err';
+  if(mode === 'signup' && (!v('fullname') || !v('username'))) return status.textContent = 'Enter your name and a username.';
+  if(!/^\S+@\S+\.\S+$/.test(v('email'))) return status.textContent = 'Enter a valid email address.';
+  if(v('password').length < 8) return status.textContent = 'Use a password with at least 8 characters.';
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = 'Please wait...';
+  const res = window.nookAuth
+    ? await window.nookAuth(mode, {fullname:v('fullname'), username:v('username'), email:v('email'), password:v('password')})
+    : {ok:false, message:'auth.js did not load. Keep it in the same folder as index.html.'};
+  btn.disabled = false;
+  status.className = 'status ' + (res.ok ? 'ok' : 'err');
+  status.textContent = res.message;
+});
+</script>
+</body>
+</html>
