@@ -171,6 +171,111 @@ html[data-theme="dark"] .danger{background:#4a1f1b;color:#ffb4aa}
   .msgs,.head,.composer{padding-left:14px;padding-right:14px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ===== Himalayan night theme to match the Nook IIT Mandi landing page ===== */
+.side{position:relative;isolation:isolate;overflow:hidden;background:linear-gradient(165deg,#101b34 0%,#0a1224 62%,#07101d 100%)}
+.side>*{position:relative;z-index:1}
+/* Keep the profile/New dropdown above the search bar and chat filters. */
+.side>.me{z-index:20}
+.new{z-index:30}
+.new .menu{z-index:100}
+.side::after{content:"";position:absolute;z-index:0;pointer-events:none;left:-8%;right:-8%;bottom:-2px;height:145px;opacity:.25;background:linear-gradient(180deg,#47627e,#172b43);clip-path:polygon(0 60%,10% 38%,19% 57%,31% 13%,43% 56%,54% 29%,66% 60%,78% 8%,89% 49%,100% 28%,100% 100%,0 100%)}
+.main{position:relative;isolation:isolate;overflow:hidden;background:linear-gradient(180deg,#0a0e1c 0%,#101a30 58%,#15243a 100%);color:#f4f6fb}
+.main>*{position:relative;z-index:1}
+.main::before,.main::after{content:"";position:absolute;z-index:0;pointer-events:none;left:-5%;right:-5%;bottom:0;transform-origin:bottom center}
+.main::before{height:44%;opacity:.36;background:linear-gradient(165deg,#6d829b 0%,#293e59 58%,#14263d 100%);clip-path:polygon(0 72%,8% 51%,16% 62%,27% 16%,36% 54%,47% 7%,58% 56%,69% 22%,79% 59%,89% 14%,100% 46%,100% 100%,0 100%)}
+.main::after{height:29%;opacity:.55;background:linear-gradient(180deg,#314962 0%,#0a1425 90%);clip-path:polygon(0 48%,13% 28%,24% 55%,37% 12%,49% 52%,61% 30%,74% 58%,86% 17%,100% 45%,100% 100%,0 100%)}
+.head,.composer,.replybar,.ro,.picker{background:rgba(10,16,32,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-color:rgba(221,229,242,.12);color:#f4f6fb}
+.head small,.replybar .rq span,.ro{color:#aab8d0}
+.msgs{background:transparent;scrollbar-color:rgba(156,199,245,.35) transparent}
+.hello,.none{color:#bdc9df}
+.none h2{color:#f4f6fb}
+.day{background:rgba(156,199,245,.16);color:#dbe7f7;border:1px solid rgba(156,199,245,.16)}
+.msg.them{background:rgba(28,43,68,.92);color:#f4f6fb;border-color:rgba(156,199,245,.18);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.msg.me{background:#e9c58a;color:#10182a;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.msg.cast{background:#1f6f5c;color:#fff}
+.composer input{background:rgba(244,246,251,.07);border-color:rgba(221,229,242,.18);color:#f4f6fb}
+.composer input::placeholder{color:#94a3bd}
+.composer input:focus{border-color:#9cc7f5;box-shadow:0 0 0 3px rgba(156,199,245,.16)}
+.send{background:#f4f6fb;color:#121a33;transition:transform .2s ease,background .2s ease,box-shadow .2s ease}
+.send:hover{background:#dceafa;transform:translateY(-1px);box-shadow:0 8px 22px rgba(156,199,245,.18)}
+.back{background:rgba(156,199,245,.16);color:#f4f6fb}
+.msg .quote{background:rgba(255,255,255,.08)}
+.msg a,.mention{color:#b8d9ff}
+.msg.me .mention{color:#121a33}
+.loading{background:#0a0e1c;color:#f4f6fb;letter-spacing:-.04em}
+.loading::after{content:"";width:7px;height:7px;margin-left:2px;display:inline-block;vertical-align:middle;border-radius:50%;background:#e9c58a;box-shadow:0 0 18px rgba(233,197,138,.45)}
+.icon-btn{background:rgba(156,199,245,.12);border:1px solid rgba(156,199,245,.1);transition:background .2s ease,transform .2s ease}
+.icon-btn:hover{background:rgba(156,199,245,.23);transform:translateY(-1px)}
+.search input{background:rgba(244,246,251,.08);border:1px solid rgba(221,229,242,.12)}
+.item.active{background:linear-gradient(100deg,rgba(156,199,245,.18),rgba(244,246,251,.08));box-shadow:inset 3px 0 #e9c58a}
+.item:hover{background:rgba(156,199,245,.1)}
+.badge,.member .tag{background:#e9c58a}
+.dialog,.menu,.bar,.attm{background:#111b31;color:#f4f6fb;border:1px solid rgba(221,229,242,.14)}
+.menu button,.attm button{color:#f4f6fb}
+.menu button:hover,.attm button:hover,.result:hover{background:rgba(156,199,245,.14)}
+.dialog input,.pbody input{background:rgba(244,246,251,.07);border-color:rgba(221,229,242,.18);color:#f4f6fb}
+.close,.tool,.pchip,.ptabs button{background:rgba(156,199,245,.16);color:#f4f6fb}
+.ptabs button[aria-selected="true"],.primary{background:#e9c58a;color:#121a33}
+.toast{background:#e9c58a;color:#121a33}
+html[data-theme="light"] .main{background:linear-gradient(180deg,#edf3fb 0%,#dce8f5 58%,#c7d7e9 100%);color:#121a33}
+html[data-theme="light"] .main::before{opacity:.26;background:linear-gradient(165deg,#aebed0,#7f98b5 70%,#6b839e)}
+html[data-theme="light"] .main::after{opacity:.3;background:linear-gradient(180deg,#718aa7,#435c79)}
+html[data-theme="light"] .side{background:linear-gradient(165deg,#121a33,#1c3150 100%)}
+html[data-theme="light"] .head,html[data-theme="light"] .composer,html[data-theme="light"] .replybar,html[data-theme="light"] .ro,html[data-theme="light"] .picker{background:rgba(248,251,255,.86);color:#121a33;border-color:#cbd8e8}
+html[data-theme="light"] .head small,html[data-theme="light"] .replybar .rq span,html[data-theme="light"] .ro,html[data-theme="light"] .hello,html[data-theme="light"] .none{color:#5b6688}
+html[data-theme="light"] .none h2{color:#121a33}
+html[data-theme="light"] .msg.them{background:rgba(255,255,255,.94);color:#121a33;border-color:#cbd8e8}
+html[data-theme="light"] .composer input,html[data-theme="light"] .dialog input,html[data-theme="light"] .pbody input{background:#f4f6fb;color:#121a33;border-color:#cbd8e8}
+html[data-theme="light"] .dialog,html[data-theme="light"] .menu,html[data-theme="light"] .bar,html[data-theme="light"] .attm{background:#fff;color:#121a33}
+html[data-theme="light"] .menu button,html[data-theme="light"] .attm button{color:#121a33}
+html[data-theme="light"] .close,html[data-theme="light"] .tool,html[data-theme="light"] .pchip,html[data-theme="light"] .ptabs button{background:#dde5f2;color:#121a33}
+html[data-theme="light"] .ptabs button[aria-selected="true"],html[data-theme="light"] .primary{background:#121a33;color:#fff}
+@media(prefers-reduced-motion:no-preference){.msg{animation:pop .22s cubic-bezier(.2,.8,.2,1) both}.item,.icon-btn,.send{transition-timing-function:cubic-bezier(.2,.8,.2,1)}}
+
+
+
+/* ===== Refined, photorealistic Himalayan atmosphere ===== */
+:root{--nook-ice:#c9e0f7;--nook-gold:#e9c58a}
+html[data-theme="dark"] body{background:#08111f}
+html[data-theme="dark"] .side{
+  background:linear-gradient(180deg,rgba(7,16,31,.94),rgba(8,17,31,.97)),
+    url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1400&q=85') center/cover no-repeat;
+  border-right:1px solid rgba(213,229,248,.09)
+}
+html[data-theme="dark"] .main{
+  background-color:#0a1425;
+  background-image:linear-gradient(180deg,rgba(7,14,29,.62) 0%,rgba(9,20,37,.48) 42%,rgba(8,18,32,.82) 100%),
+    linear-gradient(90deg,rgba(5,12,24,.18),transparent 35%,rgba(5,12,24,.12)),
+    url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=90');
+  background-position:center,center,center 48%;background-size:cover,cover,cover;background-repeat:no-repeat;
+}
+/* Let the real mountain photograph lead; keep the CSS ridges as distant atmospheric depth. */
+html[data-theme="dark"] .main::before{height:42%;opacity:.12;filter:blur(1.5px);background:linear-gradient(165deg,#b9c9da,#455e7b 65%,#13263b)}
+html[data-theme="dark"] .main::after{height:25%;opacity:.18;filter:blur(.6px);background:linear-gradient(180deg,#6f849a,#0a1425 88%)}
+html[data-theme="dark"] .side::after{opacity:.12;filter:blur(1px)}
+html[data-theme="dark"] .head{background:rgba(7,15,29,.72);border-bottom:1px solid rgba(221,232,246,.12);box-shadow:0 8px 28px rgba(0,0,0,.08)}
+html[data-theme="dark"] .composer{background:rgba(7,15,29,.78);border-top:1px solid rgba(221,232,246,.12)}
+html[data-theme="dark"] .composer input{background:rgba(228,239,252,.075);border-color:rgba(214,230,249,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+html[data-theme="dark"] .msg.them{background:linear-gradient(135deg,rgba(22,37,59,.96),rgba(17,31,51,.96));border:1px solid rgba(196,220,246,.14);box-shadow:0 7px 22px rgba(1,7,16,.16)}
+html[data-theme="dark"] .msg.me{background:linear-gradient(135deg,#f0d3a0,#dfb875);box-shadow:0 7px 24px rgba(1,7,16,.19)}
+html[data-theme="dark"] .item{transition:background .22s ease,transform .22s ease}
+html[data-theme="dark"] .item:hover{background:rgba(194,219,246,.085)}
+html[data-theme="dark"] .item.active{background:linear-gradient(100deg,rgba(156,199,245,.16),rgba(233,197,138,.075));box-shadow:inset 2px 0 #e9c58a}
+html[data-theme="dark"] .icon-btn{background:rgba(191,216,244,.075);border-color:rgba(208,228,249,.09)}
+html[data-theme="dark"] .icon-btn:hover{background:rgba(191,216,244,.16)}
+html[data-theme="dark"] .day{background:rgba(9,20,36,.7);border-color:rgba(218,231,247,.13);box-shadow:0 4px 18px rgba(0,0,0,.08);backdrop-filter:blur(10px)}
+html[data-theme="dark"] .toast{box-shadow:0 12px 32px rgba(0,0,0,.28)}
+/* Calm light mode with a misty alpine look, too. */
+html[data-theme="light"] .side{background:linear-gradient(180deg,rgba(20,39,61,.94),rgba(13,29,48,.97)),url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1400&q=80') center/cover}
+html[data-theme="light"] .main{background-image:linear-gradient(180deg,rgba(231,240,250,.58),rgba(218,232,245,.67) 55%,rgba(201,218,236,.82)),url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85');background-position:center,center 48%;background-size:cover}
+html[data-theme="light"] .main::before{opacity:.13;filter:blur(1px)}
+html[data-theme="light"] .main::after{opacity:.12;filter:blur(.5px)}
+@media (max-width:860px){
+  html[data-theme="dark"] .main{background-position:center,center,58% center}
+  html[data-theme="light"] .main{background-position:center,58% center}
+}
+
+
 </style>
 </head>
 <body>
@@ -815,7 +920,7 @@ document.addEventListener('keydown', e => { if(e.key === 'Escape') $('iOverlay')
 /* theme + sound (remembered on this device) */
 const store = { get: k => { try{ return localStorage.getItem(k); }catch(e){ return null; } }, set: (k, v) => { try{ localStorage.setItem(k, v); }catch(e){} } };
 function applyTheme(t){ document.documentElement.dataset.theme = t; $('themeBtn').textContent = t === 'dark' ? 'Light mode' : 'Dark mode'; }
-applyTheme(store.get('nook-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+applyTheme(store.get('nook-theme') || 'dark');
 $('themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(t); store.set('nook-theme', t); };
 soundOn = store.get('nook-sound') !== 'off'; $('soundBtn').textContent = 'Sound: ' + (soundOn ? 'on' : 'off');
 $('soundBtn').onclick = () => { soundOn = !soundOn; store.set('nook-sound', soundOn ? 'on' : 'off'); $('soundBtn').textContent = 'Sound: ' + (soundOn ? 'on' : 'off'); };
