@@ -1571,6 +1571,7 @@ html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
   };
 })();
 </script>
+  
 
 <!-- ===== Added feature: voice and video calls (WebRTC, signalling over Supabase Realtime) ===== -->
 <script>
@@ -1860,5 +1861,222 @@ html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
   window.addEventListener('beforeunload', () => { if (call) send(call.peer, { t: 'end', id: call.id }); });
 })();
 </script>
+<script>
+(function () {
+ 'use strict';
+ const ae = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+ const css = document.createElement('style');
+ css.textContent = `
+.cuBar{display:none;align-items:center;gap:10px;padding:10px 22px;background:var(--card);border-bottom:1px solid var(--mist)}
+.cuBar button{border:0;border-radius:999px;background:var(--marigold);color:#121A33;font-weight:700;padding:9px 16px}
+.aib{font-size:12px;color:var(--pine);background:var(--mist);border-radius:999px;padding:3px 10px;margin-left:8px;white-space:nowrap}
+.msg.ai{background:#e8f3ff;border:1px solid var(--glacier);color:#121A33;border-bottom-left-radius:5px;align-self:flex-start}
+.msg.ai .who{color:var(--pine);opacity:1}
+.msg.sysnote{align-self:center;background:var(--mist);color:var(--muted);font-size:13px;border-radius:999px;max-width:92%;text-align:center}
+.msg.sysnote small{display:inline;margin-left:6px}
+.atchip{display:none;padding:8px 22px;background:var(--card);border-top:1px solid var(--mist)}
+.atchip button{border:0;background:var(--mist);border-radius:999px;padding:6px 14px;font-weight:600}
+#cuOv .dialog,#logOv .dialog{max-width:520px;max-height:92vh;overflow-y:auto}
+.cuTabs{display:flex;gap:6px;margin:4px 0 12px}.cuTabs button{border:0;border-radius:999px;padding:6px 14px;background:var(--mist);font-weight:600}
+.cuTabs button[aria-selected="true"]{background:var(--ink);color:#fff}
+.cuSec{margin:12px 0}.cuSec h4{font-family:var(--head);font-size:15px;margin-bottom:6px}
+.cuSec p,.cuSec li{font-size:15px;line-height:1.45}.cuSec ul{list-style:none}.cuSec li{padding:8px 10px;border-radius:12px;background:var(--snow);margin-bottom:6px}
+.cuSec li small{display:block;color:var(--muted)}
+.cuDl li{border-left:4px solid var(--marigold);background:rgba(255,182,39,.16)}
+.sk{height:14px;border-radius:7px;background:linear-gradient(90deg,var(--mist),var(--snow),var(--mist));background-size:200% 100%;animation:sk 1.2s infinite;margin:10px 0}
+@keyframes sk{to{background-position:-200% 0}}
+.starters{display:none;flex-wrap:wrap;gap:6px;padding:10px 22px;background:var(--card);border-top:1px solid var(--mist)}.starters button{border:0;background:var(--mist);border-radius:999px;padding:6px 12px}
+#aiSetOv select,#aiSetOv input{width:100%;margin-top:8px;font:15px var(--body);padding:12px 14px;border-radius:14px;border:2px solid var(--mist);background:var(--snow);color:var(--ink)}
+.logrow{padding:8px 0;border-bottom:1px solid var(--mist);font-size:14px}`;
+ document.head.appendChild(css);
+ 
+ async function fn(name, args) { // both features are Postgres RPCs; the API key lives in Supabase Vault
+ const { data, error } = await nookDb.rpc(name, args);
+ if (error) throw new Error(error.message);
+ if (data && data.error) throw new Error(data.error);
+ return data;
+ }
+ 
+ /* ---------- 1.1 unread tracking ---------- */
+ const markRead = c => { nookDb.rpc('mark_read', { p_cid: c.id }); c.lastRead = new Date().toISOString(); c.unreadN = 0; };
+ const _lc = window.loadChats;
+ window.loadChats = async function () {
+ await _lc();
+ const ids = chats.map(c => c.id);
+ const [u, m] = await Promise.all([
+ nookDb.rpc('unread_counts'),
+ ids.length ? nookDb.from('conversations').select('id,ai_enabled,is_ai_chat').in('id', ids) : { data: [] }
+ ]);
+ if (!u.error) (u.data || []).forEach(r => { const c = byId[r.conversation_id]; if (c) { c.lastRead = r.last_read_at; c.unreadN = r.unread; if (!active || active.id !== c.id) c.unread = r.unread; } });
+ (m.data || []).forEach(r => { const c = byId[r.id]; if (c) { c.aiOn = r.ai_enabled; c.isAi = r.is_ai_chat; } });
+ renderList(); updateHeader();
+ };
+ 
+ const bar = ae('div', 'cuBar'); $('head').after(bar);
+ const _oc = window.openChat;
+ window.openChat = function (c) {
+ const fresh = !(active && active.id === c.id);
+ if (fresh) { c.since = c.lastRead || null; c.n0 = c.unreadN || 0; markRead(c); }
+ const p = _oc(c); p.then(() => updateHeader());
+ const show = c.type === 'group' && !c.isAi && c.n0 > 0;
+ bar.style.display = show ? 'flex' : 'none';
+ if (show) {
+ bar.innerHTML = ''; const b = ae('button', '', '✨ Catch me up (' + c.n0 + ' unread)'); b.type = 'button'; b.onclick = () => openCatchup(c);
+ bar.append(b);
+ }
+ return p;
+ };
+ const _hm = window.handleMessage;
+ window.handleMessage = async function (m) { await _hm(m); updateHeader(); if (active && m.conversation_id === active.id && m.sender_id !== me.id) markRead(active); };
+ 
+ /* ---------- 1.5 catch-up card ---------- */
+ const ov = ae('div', 'overlay'); ov.id = 'cuOv';
+ ov.innerHTML = '<div class="dialog"><h3>✨ Catch me up</h3><div class="cuTabs" role="tablist"></div><div id="cuBody"></div><div class="actions"><span></span><button class="close" id="cuClose" type="button" style="float:none">Close</button></div></div>';
+ document.body.appendChild(ov);
+ let cuChat = null, cuLang = 'en';
+ [['en', 'EN'], ['hi', 'हिं'], ['hinglish', 'Hinglish']].forEach(([k, t]) => {
+ const b = ae('button', '', t); b.type = 'button'; b.dataset.l = k; b.setAttribute('aria-selected', k === 'en');
+ b.onclick = () => runCatchup(k); ov.querySelector('.cuTabs').appendChild(b);
+ });
+ $('cuClose').onclick = () => ov.classList.remove('open');
+ ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+ function openCatchup(c) { cuChat = c; ov.classList.add('open'); runCatchup('en'); }
+ function sec(title, node, cls) { const s = ae('div', 'cuSec ' + (cls || '')); s.append(ae('h4', '', title), node); return s; }
+ function list(items, f) {
+ if (!items.length) return ae('p', '', 'Nothing here.');
+ const u = ae('ul'); items.forEach(i => { const li = ae('li'); f(li, i); u.appendChild(li); }); return u;
+ }
+ async function runCatchup(lang) {
+ cuLang = lang; ov.querySelectorAll('.cuTabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.l === lang));
+ const box = $('cuBody'); box.innerHTML = '<div class="sk"></div><div class="sk" style="width:80%"></div><div class="sk" style="width:60%"></div><div class="sk"></div>';
+ try {
+ const d = await fn('catchup', { p_cid: cuChat.id, p_lang: lang, p_since: cuChat.since });
+ box.innerHTML = '';
+ if (d.empty) { box.appendChild(ae('p', 'hint', "You're all caught up. Fewer than 5 new messages.")); return; }
+ box.append(sec('Summary', ae('p', '', d.summary)));
+ box.append(sec('⏰ Deadlines', list(d.deadlines, (li, x) => { li.append(ae('b', '', x.item), ae('small', '', 'Due: ' + x.due + (x.mentioned_by ? ' · ' + x.mentioned_by : ''))); }), 'cuDl'));
+ box.append(sec('✅ Decisions', list(d.decisions, (li, x) => { li.append(ae('b', '', x.decision), ae('small', '', x.by || '')); })));
+ box.append(sec('❓ Open questions', list(d.open_questions, (li, x) => { li.append(ae('b', '', x.question), ae('small', '', x.asked_by || '')); })));
+ } catch (e) {
+ box.innerHTML = ''; box.appendChild(ae('p', 'hint', e.message || 'Could not load the summary.'));
+ const r = ae('button', 'primary', 'Retry'); r.type = 'button'; r.onclick = () => runCatchup(lang); box.appendChild(r);
+ }
+ }
+ 
+ /* ---------- 2.x render AI replies + system lines ---------- */
+ const _ab = window.addBubble;
+ window.addBubble = function (c, m) {
+ _ab(c, m);
+ if (m.kind !== 'ai' && m.kind !== 'sysnote') return;
+ const e = $('msgs').querySelector('[data-id="' + m.id + '"]'); if (!e) return;
+ if (m.kind === 'ai') {
+ e.classList.remove('me', 'cast'); e.classList.add('them');
+ let w = e.querySelector('.who'); if (!w) { w = ae('span', 'who'); e.prepend(w); }
+ w.textContent = '🤖 AI · AI-generated';
+ }
+ };
+ 
+ /* ---------- 2.3 / 2.5 private chat, badge, log, group switch ---------- */
+ const intro = 'How AI works here:\n\n• AI reads a chat ONLY when someone types @ai (or writes in your private "Ask AI" chat).\n• Then it receives only the last 20 messages of that one chat. Never other chats.\n• Nothing is read, scanned or analysed in the background.\n• Your AI settings (name, level, style) are used only in your private Ask AI chat.\n• Everyone in the chat sees a line when AI reads it, and the group can audit it in "AI log".\n• The AI provider receives those messages at the time of the call.\n\nContinue?';
+ const askIntro = () => { if (store.get('nook-ai-intro')) return true; if (!confirm(intro)) return false; store.set('nook-ai-intro', '1'); return true; };
+ 
+ const mi = ae('button', '', '🤖 Ask AI'); mi.setAttribute('role', 'menuitem'); $('newMenu').appendChild(mi);
+ mi.onclick = async () => {
+ if (!askIntro()) return;
+ const { data, error } = await nookDb.rpc('get_or_create_ai_chat'); if (error) return toast(error.message);
+ await loadChats(); if (byId[data]) openChat(byId[data]);
+ };
+ 
+ const badge = ae('span', 'aib'), logBtn = ae('button', 'hbtn', 'AI log'); logBtn.type = 'button'; logBtn.style.marginLeft = '6px';
+ $('hName').parentNode.appendChild(badge); $('pinBtn').before(logBtn);
+ const _uh = window.updateHeader;
+ window.updateHeader = function () {
+ _uh(); const c = active;
+ badge.style.display = c && c.type !== 'broadcast' ? '' : 'none';
+ logBtn.style.display = c && c.type === 'group' && !c.isAi ? '' : 'none';
+ if (c) badge.textContent = c.isAi ? '🔒 Private AI chat' : c.aiOn === false ? '🔒 AI is disabled here' : '🔒 AI is off until you call it';
+ if (typeof starters !== 'undefined') starters.style.display = c && c.isAi && c.loaded && !c.msgs.length ? 'flex' : 'none';
+ };
+ 
+ const lo = ae('div', 'overlay'); lo.id = 'logOv';
+ lo.innerHTML = '<div class="dialog"><h3>AI access log</h3><p class="hint">Every time AI reads this chat. Only who, when and how many messages. Never the text.</p><label class="chk" id="logSw" style="display:none"><input type="checkbox" id="logOn"> Allow @ai in this group</label><div id="logRows"></div><div class="actions"><span></span><button class="close" id="logClose" type="button" style="float:none">Close</button></div></div>';
+ document.body.appendChild(lo);
+ $('logClose').onclick = () => lo.classList.remove('open');
+ lo.addEventListener('click', e => { if (e.target === lo) lo.classList.remove('open'); });
+ logBtn.onclick = async e => {
+ e.stopPropagation(); const c = active; if (!c) return;
+ const admin = !!(c.roles && c.roles[me.id] === 'admin');
+ $('logSw').style.display = admin ? 'flex' : 'none'; $('logOn').checked = c.aiOn !== false;
+ $('logOn').onchange = async () => {
+ const { error } = await nookDb.rpc('set_ai_enabled', { p_cid: c.id, p_on: $('logOn').checked });
+ if (error) { $('logOn').checked = !$('logOn').checked; return toast(error.message); }
+ c.aiOn = $('logOn').checked; updateHeader(); toast(c.aiOn ? 'AI mentions enabled' : 'AI mentions disabled');
+ };
+ const box = $('logRows'); box.innerHTML = '<div class="sk"></div>'; lo.classList.add('open');
+ const { data, error } = await nookDb.from('ai_access_log').select('created_at,message_count,profiles(full_name)').eq('conversation_id', c.id).order('created_at', { ascending: false }).limit(50);
+ box.innerHTML = '';
+ if (error) return box.appendChild(ae('p', 'hint', 'Could not load the log.'));
+ if (!data.length) return box.appendChild(ae('p', 'hint', 'AI has never read this chat.'));
+ data.forEach(r => box.appendChild(ae('div', 'logrow', '🔒 ' + (r.profiles ? r.profiles.full_name : 'Someone') + ' · ' + r.message_count + ' messages · ' + new Date(r.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))));
+ };
+ 
+ /* ---------- 2.4 @ai trigger (only when the user types @ai or is in the private AI chat) ---------- */
+ const trig = (c, b) => c && c.type !== 'broadcast' && (c.isAi || /(^|\s)@ai\b/i.test(b));
+ const _send = window.sendMessage;
+ window.sendMessage = async function (kind, body) {
+ const c = active, go = kind === 'text' && trig(c, body);
+ if (go && !askIntro()) return false;
+ const ok = await _send(kind, body);
+ if (ok && go && c.last && c.last.sender_id === me.id && c.last.body === body) ask(c, c.last);
+ return ok;
+ };
+ async function ask(c, m) {
+ c.typing = c.typing || {}; c.typing.__ai = 'AI'; renderList(); if (active === c) updateHeader();
+ try { await fn('ai_ask', { p_cid: c.id, p_mid: m.id }); }
+ catch (e) { toast(e.message || 'AI request failed'); }
+ finally { delete c.typing.__ai; renderList(); if (active === c) updateHeader(); }
+ }
+ 
+ /* autocomplete for @ */
+ const chip = ae('div', 'atchip'), cb = ae('button', '', '@ai · ask the AI (it reads the last 20 messages only when you call it)'); cb.type = 'button'; chip.appendChild(cb);
+ $('composer').before(chip);
+ $('text').addEventListener('input', () => { chip.style.display = /(^|\s)@a?i?$/i.test($('text').value) && active && active.type !== 'broadcast' ? 'block' : 'none'; });
+ /* ---------- "Ask me anything" starters + personalised AI settings ---------- */
+ const starters = ae('div', 'starters');
+ ['Explain recursion in simple words', 'Give me 5 project ideas for CS201', 'Help me plan my study week', 'Mujhe pointers samjhao'].forEach(t => {
+ const b = ae('button', '', t); b.type = 'button'; b.onclick = () => { $('text').value = t; $('composer').requestSubmit(); }; starters.appendChild(b);
+ });
+ $('composer').before(starters);
+ 
+ const so = ae('div', 'overlay'); so.id = 'aiSetOv';
+ so.innerHTML = '<div class="dialog"><h3>🤖 Personalise AI</h3><p class="hint">Used only in your private "Ask AI" chat, never in group @ai replies.</p>' +
+ '<input id="apName" maxlength="40" placeholder="What should AI call you?" autocomplete="off">' +
+ '<select id="apLevel"><option value="">Study level (optional)</option><option>School</option><option>Undergraduate</option><option>Postgraduate</option><option>Working professional</option></select>' +
+ '<select id="apStyle"><option value="">Answer style: balanced</option><option value="simple">Explain simply, with analogies</option><option value="brief">Short and to the point</option><option value="detailed">Detailed, step by step</option></select>' +
+ '<select id="apLang"><option value="auto">Reply in the language I write in</option><option value="en">Always English</option><option value="hinglish">Always Hinglish</option><option value="hi">Always Hindi (Devanagari)</option></select>' +
+ '<input id="apInt" maxlength="200" placeholder="Interests or subjects (e.g. DSA, football, music)" autocomplete="off">' +
+ '<div class="actions" style="margin-top:14px"><button class="close" id="apCancel" type="button" style="float:none">Cancel</button><button class="primary" id="apSave" type="button">Save</button></div></div>';
+ document.body.appendChild(so);
+ const sm = ae('button', '', '⚙️ AI settings'); sm.setAttribute('role', 'menuitem'); $('newMenu').appendChild(sm);
+ sm.onclick = async () => {
+ so.classList.add('open');
+ const { data } = await nookDb.from('ai_preferences').select('*').eq('user_id', me.id).maybeSingle();
+ $('apName').value = (data && data.display_name) || ''; $('apLevel').value = (data && data.level) || '';
+ $('apStyle').value = (data && data.style) || ''; $('apLang').value = (data && data.language) || 'auto'; $('apInt').value = (data && data.interests) || '';
+ };
+ $('apCancel').onclick = () => so.classList.remove('open');
+ so.addEventListener('click', e => { if (e.target === so) so.classList.remove('open'); });
+ $('apSave').onclick = async () => {
+ const { error } = await nookDb.from('ai_preferences').upsert({
+ user_id: me.id, display_name: $('apName').value.trim() || null, level: $('apLevel').value || null, style: $('apStyle').value || null,
+ language: $('apLang').value, interests: $('apInt').value.trim() || null, updated_at: new Date().toISOString() });
+ if (error) return toast('Could not save: ' + error.message);
+ so.classList.remove('open'); toast('AI personalised');
+ };
+ 
+ cb.onclick = () => { $('text').value = $('text').value.replace(/@a?i?$/i, '@ai '); chip.style.display = 'none'; $('text').focus(); };
+})();
+</script>
+  
 </body>
 </html>
