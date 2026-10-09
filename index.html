@@ -200,29 +200,113 @@ input:focus{border-color:var(--glacier);box-shadow:0 0 0 4px rgba(156,199,245,.2
 .status.err{color:#ff8f86}.status.ok{color:#4fd1a5}
 .b3{opacity:.45}
 
-/* ===== intro curtain ===== */
-#intro{position:fixed;inset:0;z-index:300;pointer-events:none}
+/* ===== Himalayan drone intro ===== */
+#intro{position:fixed;inset:0;z-index:300;overflow:hidden;background:#091528;pointer-events:auto;color:#f4f6fb}
 html:not(.mo) #intro{display:none}
-.lock{overflow:hidden}
-.ip{position:absolute;left:0;right:0;height:50%;background:#070B18;overflow:hidden}
-.it{top:0}.ib{bottom:0}
-.ilogo{position:absolute;left:0;right:0;bottom:18px;text-align:center;font-family:var(--head);font-weight:800;font-size:clamp(64px,14vw,150px);line-height:1;letter-spacing:-.04em}
-.lm{display:inline-block;overflow:hidden;padding:.05em .02em .12em}
-.l{display:inline-block}
-.idot{display:inline-block;width:.14em;height:.14em;background:var(--marigold);border-radius:50%;margin-left:.04em}
-.imeta{position:absolute;left:0;right:0;top:18px;text-align:center;font:600 22px var(--head);color:var(--glacier)}
-.imeta small{display:block;margin-top:6px;font:400 15px var(--body);color:#8a93b3}
-.mo .l,.mo .idot,.mo .imeta small{opacity:0}
-.seam{position:absolute;left:50%;top:50%;width:min(420px,70vw);height:2px;margin:-1px 0 0 calc(min(420px,70vw) / -2);background:rgba(244,246,251,.14)}
-.fill{position:absolute;inset:0;background:linear-gradient(90deg,var(--glacier),var(--marigold));transform:scaleX(0);transform-origin:0 50%}
+#intro .sky{position:absolute;inset:-8%;background:linear-gradient(180deg,rgba(7,15,34,.15),rgba(7,15,34,.18) 45%,rgba(7,15,34,.75)),url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85');background-size:cover;background-position:center 48%;transform:scale(1.16);filter:saturate(.82) contrast(1.08);animation:dronePush 3.8s cubic-bezier(.2,.65,.25,1) forwards}
+/* Layered ridgelines create parallax depth over the photographic sky */
+.mountain{position:absolute;left:-8%;width:116%;bottom:-2%;height:58%;transform-origin:50% 100%;will-change:transform}
+.mountain.far{height:48%;bottom:8%;background:linear-gradient(180deg,#7187a2,#283b57 70%);clip-path:polygon(0 80%,8% 52%,15% 67%,25% 18%,32% 55%,42% 7%,51% 56%,62% 22%,70% 61%,82% 12%,90% 53%,100% 34%,100% 100%,0 100%);opacity:.7;filter:blur(1px);animation:ridgeFar 3.8s ease-in-out forwards}
+.mountain.mid{height:55%;background:linear-gradient(160deg,#9aabc0 0%,#425774 36%,#172740 80%);clip-path:polygon(0 70%,10% 45%,18% 59%,30% 9%,39% 49%,48% 22%,58% 61%,70% 6%,80% 51%,89% 29%,100% 62%,100% 100%,0 100%);animation:ridgeMid 3.8s ease-in-out forwards}
+.mountain.near{height:38%;background:linear-gradient(180deg,#253b50,#07111f 82%);clip-path:polygon(0 50%,13% 28%,24% 56%,37% 13%,49% 53%,61% 31%,74% 58%,86% 17%,100% 45%,100% 100%,0 100%);animation:ridgeNear 3.8s ease-in-out forwards}
+.snowcap{position:absolute;inset:0;background:linear-gradient(145deg,transparent 0 27%,rgba(242,248,255,.94) 27.2% 28.3%,transparent 28.5%),linear-gradient(110deg,transparent 0 38%,rgba(230,241,251,.85) 38.2% 39%,transparent 39.2%),linear-gradient(150deg,transparent 0 69%,rgba(235,244,255,.8) 69.2% 70.1%,transparent 70.3%);opacity:.75;mix-blend-mode:screen;clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
+.intro-vignette{position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,10,23,.45),transparent 55%),linear-gradient(0deg,rgba(4,9,19,.82),transparent 58%);pointer-events:none}
+.intro-meta{position:absolute;top:clamp(28px,7vh,72px);left:clamp(24px,8vw,110px);z-index:5;letter-spacing:.22em;text-transform:uppercase;font-size:11px;color:#d5e4f7;opacity:0;animation:metaIn .55s .15s ease forwards}
+.intro-title{position:absolute;left:clamp(24px,8vw,110px);bottom:clamp(150px,24vh,250px);z-index:5;max-width:720px;opacity:0;transform:translateY(28px);animation:titleIn .65s .25s cubic-bezier(.2,.8,.2,1) forwards}
+.intro-title strong{display:block;font:800 clamp(42px,7vw,92px)/.94 var(--head);letter-spacing:-.055em;text-wrap:balance}
+.intro-title span{display:block;margin-top:18px;color:#c5d3e8;font-size:clamp(13px,1.4vw,16px);letter-spacing:.06em}
+#intro.leaving{pointer-events:none;animation:introFade .9s ease forwards}
+@keyframes dronePush{0%{transform:scale(1.16) translate3d(0,2%,0)}55%{transform:scale(1.07) translate3d(-1%,-1%,0)}100%{transform:scale(1.02) translate3d(0,-2%,0)}}
+@keyframes ridgeFar{0%{transform:translate3d(0,7%,0) scale(1.08)}100%{transform:translate3d(-2%,0,0) scale(1)}}
+@keyframes ridgeMid{0%{transform:translate3d(0,13%,0) scale(1.12)}100%{transform:translate3d(1%,0,0) scale(1)}}
+@keyframes ridgeNear{0%{transform:translate3d(0,24%,0) scale(1.18)}100%{transform:translate3d(-1%,0,0) scale(1)}}
+@keyframes metaIn{to{opacity:.9}}
+@keyframes titleIn{to{opacity:1;transform:translateY(0)}}
+@keyframes introFade{to{opacity:0;visibility:hidden}}
+
+
+/* ===== Full-page Himalayan mountain world (replaces astronomy theme) ===== */
+:root{
+  color-scheme:dark;
+  --ink:#edf5ff; --snow:#edf5ff; --glacier:#a8d6f3; --marigold:#e9c58a; --pine:#83b7a1; --mist:rgba(220,235,248,.18);
+}
+html{background:#071421}
+body{background:transparent;color:#edf5ff;isolation:isolate}
+#pageBackdrop{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:#091a2a}
+.backdrop-photo{position:absolute;inset:-5%;background-image:linear-gradient(180deg,rgba(5,18,32,.28),rgba(5,18,32,.56) 46%,rgba(4,14,25,.88)),url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85');background-size:cover;background-position:center 48%;filter:saturate(.82) contrast(1.06);transform:scale(1.06);animation:pageDrone 38s ease-in-out infinite alternate;will-change:transform}
+.backdrop-ridge{position:absolute;left:-6%;width:112%;pointer-events:none;will-change:transform;opacity:.72}
+.ridge-far{bottom:20%;height:40%;background:linear-gradient(180deg,rgba(164,190,211,.42),rgba(41,69,91,.5));clip-path:polygon(0 78%,9% 48%,17% 64%,27% 20%,36% 56%,45% 10%,55% 60%,65% 25%,76% 62%,86% 15%,94% 48%,100% 32%,100% 100%,0 100%);animation:pageRidgeFar 26s ease-in-out infinite alternate}
+.ridge-mid{bottom:5%;height:42%;background:linear-gradient(160deg,rgba(118,151,174,.62),rgba(28,53,74,.9) 72%);clip-path:polygon(0 72%,11% 45%,20% 61%,31% 8%,40% 48%,50% 20%,60% 62%,71% 5%,81% 48%,91% 23%,100% 58%,100% 100%,0 100%);animation:pageRidgeMid 32s ease-in-out infinite alternate}
+.ridge-near{bottom:-2%;height:31%;background:linear-gradient(180deg,rgba(23,48,66,.9),#06111d);clip-path:polygon(0 54%,14% 29%,25% 58%,39% 11%,50% 52%,64% 27%,77% 58%,89% 17%,100% 44%,100% 100%,0 100%);animation:pageRidgeNear 24s ease-in-out infinite alternate}
+.backdrop-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,12,23,.55),rgba(4,14,26,.16) 60%,rgba(3,12,23,.35)),linear-gradient(180deg,rgba(4,13,24,.48),transparent 24%,rgba(4,13,24,.18) 55%,rgba(3,10,18,.72));}
+@keyframes pageDrone{from{transform:scale(1.04) translate3d(0,0,0)}to{transform:scale(1.13) translate3d(-1.2%,-1%,0)}}
+@keyframes pageRidgeFar{from{transform:translate3d(1%,0,0)}to{transform:translate3d(-1.5%,-1%,0)}}
+@keyframes pageRidgeMid{from{transform:translate3d(-1%,0,0)}to{transform:translate3d(1.5%,-.6%,0)}}
+@keyframes pageRidgeNear{from{transform:translate3d(1%,0,0)}to{transform:translate3d(-1%,.5%,0)}}
+::selection{background:#e9c58a;color:#122334}
+:focus-visible{outline-color:#e9c58a}
+.lede{color:#d1e0ed}.hero-note,footer{color:#b2c7d8}
+.top{background:linear-gradient(180deg,rgba(5,16,28,.62),transparent)}
+.top.scrolled{background:rgba(7,22,36,.78);box-shadow:0 1px 0 rgba(221,238,250,.16)}
+.logo i{background:#e9c58a}
+.navlinks a:not(.btn)::after{background:#e9c58a}
+.btn{background:#edf5ff;color:#102236}.btn:hover{background:#fff}
+.btn.alt{background:#e9c58a;color:#17283a;box-shadow:0 12px 26px -12px rgba(233,197,138,.6)}
+.btn.alt:hover{background:#f2d7a9}
+.btn.ghost{background:rgba(7,21,35,.28);color:#f1f7fc;box-shadow:inset 0 0 0 1.5px rgba(231,242,250,.62)}
+.btn.ghost:hover{background:rgba(230,242,251,.12)}
+.px{opacity:.18}.blob{filter:blur(18px);opacity:.25}.b1{background:#8fb8d2}.b2{background:#e9c58a}.b3{background:#8db6a7}
+.halo i:first-child{background:#9ccce6;opacity:.32}.halo i:last-child{background:#e9c58a;opacity:.2}
+.demo{background:rgba(10,27,43,.9);border-color:rgba(221,238,250,.2);box-shadow:0 30px 90px -30px rgba(0,0,0,.65),0 0 0 1px rgba(168,214,243,.08);backdrop-filter:blur(16px)}
+.demo-top{background:rgba(5,17,30,.92)}
+.tabs{background:rgba(219,235,247,.08)}
+.tab,.switch button{color:#edf5ff}
+.pill{background:rgba(160,190,211,.22);box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.feed{background:linear-gradient(rgba(12,30,47,.94),rgba(8,23,38,.96))}
+.msg.them,.typing{background:rgba(142,176,201,.18);color:#edf5ff}
+.msg.me{background:#e9c58a;color:#18283a}
+.typing span{background:#adc6d9}
+.demo-input{border-top-color:rgba(221,238,250,.12)}.demo-input div{background:rgba(255,255,255,.07);color:#b2c7d8}
+.chip{background:rgba(12,31,48,.88);border-color:rgba(221,238,250,.2);color:#edf5ff;backdrop-filter:blur(12px)}
+.chip.round{background:#e9c58a;color:#17283a}.stack i{border-color:#10263a}
+.marquee{background:rgba(8,24,39,.7);border-color:rgba(221,238,250,.12);backdrop-filter:blur(12px)}
+.tagchip{background:rgba(217,234,246,.09);color:#e7f1f9;border:1px solid rgba(221,238,250,.08)}
+.tagchip:nth-child(4n+1) i,.tagchip:nth-child(4n+2) i,.tagchip:nth-child(4n+3) i,.tagchip:nth-child(4n) i{background:#b8d6e8}
+.modes{background:linear-gradient(135deg,rgba(5,18,31,.88),rgba(12,34,49,.86));border-block:1px solid rgba(221,238,250,.12);backdrop-filter:blur(14px)}
+.glow{filter:blur(85px);opacity:.22}.g1{background:rgba(137,183,210,.4)}.g2{background:rgba(92,147,129,.3)}
+.mode{border-top-color:rgba(231,242,250,.17)}.rule{background:rgba(231,242,250,.28)}
+.mode p{color:#c8d9e6}.tags span{background:rgba(168,214,243,.12);color:#c6e1f3}
+.signup{background:linear-gradient(180deg,rgba(6,19,32,.2),rgba(5,16,27,.38))}
+.card{background:rgba(8,25,41,.83);border-color:rgba(221,238,250,.18);box-shadow:0 30px 80px -30px rgba(0,0,0,.65);backdrop-filter:blur(20px)}
+.switch{background:rgba(221,238,250,.1)}
+input{background:rgba(239,247,252,.07);border-color:rgba(221,238,250,.2);color:#edf5ff}
+input:focus{border-color:#a8d6f3;box-shadow:0 0 0 4px rgba(168,214,243,.17)}
+::placeholder{color:#9db4c7}
+.status.err{color:#ffaaa1}.status.ok{color:#a5e2c9}
+footer{background:rgba(3,12,21,.55)}
+.intro-title span{color:#d4e3ef}
+@media(max-width:760px){.ridge-far{bottom:22%;height:34%}.ridge-mid{height:35%}.ridge-near{height:25%}.backdrop-shade{background:linear-gradient(180deg,rgba(4,13,24,.45),rgba(4,13,24,.24) 45%,rgba(3,10,18,.78))}}
+@media(prefers-reduced-motion:reduce){.backdrop-photo,.backdrop-ridge{animation:none!important}}
+
 </style>
 </head>
 <body>
-<canvas id="bg" aria-hidden="true"></canvas>
-<div id="intro" aria-hidden="true">
-  <div class="ip it"><div class="ilogo"><span class="lm"><span class="l">n</span></span><span class="lm"><span class="l">o</span></span><span class="lm"><span class="l">o</span></span><span class="lm"><span class="l">k</span></span><i class="idot"></i></div></div>
-  <div class="ip ib"><div class="imeta"><span class="num">0</span>%<small>Chat one-to-one, in groups, or with everyone.</small></div></div>
-  <div class="seam"><i class="fill"></i></div>
+<div id="pageBackdrop" aria-hidden="true">
+  <div class="backdrop-photo"></div>
+  <div class="backdrop-ridge ridge-far"></div>
+  <div class="backdrop-ridge ridge-mid"></div>
+  <div class="backdrop-ridge ridge-near"></div>
+  <div class="backdrop-shade"></div>
+</div>
+<div id="intro" aria-label="Cinematic Himalayan mountain intro">
+  <div class="sky"></div>
+  <div class="mountain far"><div class="snowcap"></div></div>
+  <div class="mountain mid"><div class="snowcap"></div></div>
+  <div class="mountain near"></div>
+  <div class="intro-vignette"></div>
+  <div class="intro-meta">HIMALAYAN RANGE · INDIAN INSTITUTE OF TECHNOLOGY</div>
+  <div class="intro-title"><strong>IIT MANDI</strong><span>Where innovation meets the Himalayas.</span></div>
+
 </div>
 <div class="progress" id="progress" aria-hidden="true"></div>
 
@@ -595,72 +679,27 @@ function boot(){
   }
 }
 
-/* ---------- intro curtain ---------- */
+/* ---------- Himalayan drone intro ---------- */
 function runIntro(go){
-  var el = $('#intro'), started = false, ended = false, E = [.65,0,.35,1], O = [.76,0,.24,1];
-  function start(){ if(!started){ started = true; go(); } }
-  function end(){ if(ended) return; ended = true; start(); el.remove(); root.classList.remove('lock'); }
+  var el = $('#intro');
+  if(!el || reduce){ if(el) el.remove(); go(); return; }
   root.classList.add('lock');
-  setTimeout(end,7000);
-  A($$('#intro .l'),{y:['110%','0%'],opacity:[0,1]},{duration:.8,ease:EASE,delay:stagger(.08,{startDelay:.15})});
-  A($('#intro .idot'),{scale:[0,1],opacity:[0,1]},{type:'spring',stiffness:500,damping:11,delay:.75});
-  A($('#intro small'),{opacity:[0,1],y:[10,0]},{duration:.6,delay:.9});
-  A($('#intro .fill'),{scaleX:[0,1]},{duration:1.8,ease:E,delay:.2});
-  var num = $('#intro .num');
-  A(0,100,{duration:1.8,ease:E,delay:.2,onUpdate:function(v){ num.textContent = Math.round(v) }});
-  setTimeout(function(){
-    A($('#intro .seam'),{opacity:[1,0]},{duration:.25});
-    setTimeout(function(){
-      A($('#intro .it'),{y:['0%','-101%']},{duration:1,ease:O});
-      A($('#intro .ib'),{y:['0%','101%']},{duration:1,ease:O});
-      setTimeout(start,350);
-      setTimeout(end,1150);
-    },200);
-  },2300);
+  /* Motion One powers the parallax camera; CSS is the fallback. */
+  var sky = $('.sky'), far = $('.mountain.far'), mid = $('.mountain.mid'), near = $('.mountain.near');
+  if(M){
+    A(sky,{scale:[1.16,1.02],x:['0%','-1%'],y:['2%','-2%']},{duration:3.6,ease:[.2,.65,.25,1]});
+    A(far,{y:['7%','0%'],x:['0%','-2%']},{duration:3.5,ease:[.2,.65,.25,1]});
+    A(mid,{y:['13%','0%'],x:['0%','1%']},{duration:3.5,ease:[.2,.65,.25,1]});
+    A(near,{y:['24%','0%'],x:['0%','-1%']},{duration:3.5,ease:[.2,.65,.25,1]});
+  }
+  var finished = false;
+  function end(){ if(finished)return; finished=true; el.classList.add('leaving'); setTimeout(function(){el.remove();root.classList.remove('lock');go();},850); }
+  setTimeout(end,4100);
+  el.addEventListener('click',function(e){ if(e.target===el) end(); });
 }
 
-/* ---------- animated background: aurora + particle network ---------- */
-function bgInit(){
-  var cv = $('#bg'), ctx = cv.getContext('2d'), w, h, pts = [], mx = -9999, my = -9999, t = 0;
-  var dpr = Math.min(window.devicePixelRatio || 1,1.5);
-  var orbs = [['156,199,245',.2,0],['255,182,39',.11,2.1],['46,154,128',.2,4.2]];
-  function size(){
-    w = innerWidth; h = innerHeight; cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
-    var n = Math.min(90,Math.round(w*h/16000)); pts = [];
-    for(var i = 0; i < n; i++) pts.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.4+.6});
-  }
-  function frame(){
-    t += .0035; ctx.clearRect(0,0,w,h);
-    ctx.globalCompositeOperation = 'lighter';
-    orbs.forEach(function(o,i){
-      var x = w*(.5+.38*Math.sin(t*(1+i*.3)+o[2])), y = h*(.45+.35*Math.cos(t*(.8+i*.25)+o[2]*1.3)), r = Math.max(w,h)*.42;
-      var g = ctx.createRadialGradient(x,y,0,x,y,r);
-      g.addColorStop(0,'rgba('+o[0]+','+o[1]+')'); g.addColorStop(1,'rgba('+o[0]+',0)');
-      ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
-    });
-    ctx.globalCompositeOperation = 'source-over';
-    for(var i = 0; i < pts.length; i++){
-      var p = pts[i];
-      p.x += p.vx; p.y += p.vy;
-      if(p.x < 0) p.x = w; else if(p.x > w) p.x = 0;
-      if(p.y < 0) p.y = h; else if(p.y > h) p.y = 0;
-      var dm = Math.hypot(p.x-mx,p.y-my);
-      if(dm < 170){ p.x += (mx-p.x)*.004; p.y += (my-p.y)*.004;
-        ctx.strokeStyle = 'rgba(255,182,39,'+(1-dm/170)*.5+')'; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(mx,my); ctx.stroke(); }
-      ctx.fillStyle = 'rgba(244,246,251,.55)'; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
-      for(var j = i+1; j < pts.length; j++){
-        var q = pts[j], d = Math.hypot(p.x-q.x,p.y-q.y);
-        if(d < 130){ ctx.strokeStyle = 'rgba(156,199,245,'+(1-d/130)*.2+')'; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
-      }
-    }
-    if(!reduce) requestAnimationFrame(frame);
-  }
-  size(); frame();
-  addEventListener('resize',function(){ size(); if(reduce) frame(); });
-  addEventListener('pointermove',function(e){ mx = e.clientX; my = e.clientY; },{passive:true});
-}
-bgInit();
-if(M) runIntro(boot);
+/* The full-page Himalayan backdrop is animated with CSS parallax layers. */
+if(M) runIntro(boot); else boot();
 
 /* ---------- Sign up / Log in ---------- */
 var mode = 'signup', fieldsToken = 0;
