@@ -1165,5 +1165,167 @@ $('logout').onclick = async () => { await nookDb.auth.signOut(); location.href =
 })();
 
 </script>
+
+<!-- ===== Added feature: profile pictures ===== -->
+<script>
+(function () {
+  'use strict';
+  const AV_BUCKET = 'avatars', AV_SIZE = 256, AV_MAX_IN = 15 * 1024 * 1024;
+  const avatars = {};                       // userId -> public photo url
+  const avEl = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+
+  const css = document.createElement('style');
+  css.textContent = `
+#meAvatar{cursor:pointer}
+#meAvatar:hover{outline:2px solid var(--marigold);outline-offset:2px}
+.avatar{background-size:cover;background-position:center}
+.pf{text-align:center}
+.pf .big{width:112px;height:112px;margin:6px auto 14px;font-size:44px;font-family:var(--head);font-weight:800}
+.pf .pfn{font-weight:700;font-size:18px}.pf small{display:block;color:var(--muted);margin-bottom:12px}
+.pf .actions{justify-content:center;flex-wrap:wrap}`;
+  document.head.appendChild(css);
+
+  /* show a photo (or the initial) inside any .avatar element */
+  function setAv(node, id, fallback) {
+    if (!node) return;
+    const url = avatars[id];
+    if (url) {
+      node.style.backgroundImage = 'url("' + String(url).replace(/"/g, '%22') + '")';
+      node.textContent = '';
+    } else {
+      node.style.backgroundImage = '';
+      if (fallback != null) node.textContent = fallback;
+    }
+  }
+  function repaint() {
+    if (!me) return;
+    setAv($('meAvatar'), me.id, initial(me.name));
+    renderList(); updateHeader();
+    const big = $('pfBig'); if (big) setAv(big, me.id, initial(me.name));
+  }
+
+  /* load everyone's photos (keeps initials if the avatar_url column does not exist yet) */
+  async function loadAvatars() {
+    try {
+      const ids = new Set([me.id]);
+      chats.forEach(c => Object.keys(c.members).forEach(id => ids.add(id)));
+      const { data, error } = await nookDb.from('profiles').select('id,avatar_url').in('id', [...ids]);
+      if (error || !data) return;
+      data.forEach(r => { if (r.avatar_url) avatars[r.id] = r.avatar_url; else delete avatars[r.id]; });
+    } catch (e) {}
+  }
+  let wired = false;
+  const _lc = window.loadChats;
+  window.loadChats = async function () {
+    await _lc();
+    await loadAvatars(); repaint();
+    if (wired) return; wired = true;
+    try {
+      nookDb.channel('nook-profiles').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, p => {
+        const r = p.new; if (!r || !me || r.id === me.id) return;
+        if (r.avatar_url) avatars[r.id] = r.avatar_url; else delete avatars[r.id];
+        repaint();
+      }).subscribe();
+    } catch (e) {}
+  };
+
+  /* draw photos in the sidebar, chat header and info dialog */
+  const _rl = window.renderList;
+  window.renderList = function () {
+    _rl();
+    const q = $('q').value.trim().toLowerCase();
+    const rows = chats.filter(c => (filter === 'all' || c.type === filter) && c.name.toLowerCase().includes(q));
+    document.querySelectorAll('#list .item').forEach((it, i) => {
+      const c = rows[i]; if (c && c.type === 'direct') setAv(it.querySelector('.avatar'), c.other, initial(c.name));
+    });
+  };
+  const _uh = window.updateHeader;
+  window.updateHeader = function () {
+    _uh();
+    if (active && active.type === 'direct') setAv($('hAvatar'), active.other, initial(active.name));
+  };
+  const _oi = window.openInfo;
+  window.openInfo = function (c) {
+    _oi(c);
+    const ids = c.type === 'direct' ? [c.other]
+      : Object.entries(c.members).sort((a, b) => (b[0] === c.owner) - (a[0] === c.owner)).map(x => x[0]);
+    document.querySelectorAll('#iMembers .member').forEach((row, i) => {
+      const id = ids[i]; if (id) setAv(row.querySelector('.avatar'), id, null);
+    });
+  };
+
+  /* profile photo dialog */
+  const ov = avEl('div', 'overlay'); ov.id = 'pfOv';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Profile photo');
+  ov.innerHTML = '<div class="dialog pf"><h3>Profile photo</h3><div class="avatar big" id="pfBig"></div><div class="pfn" id="pfName"></div><small id="pfUser"></small>' +
+    '<div class="actions"><button class="primary" id="pfChange" type="button">Choose photo</button><button class="danger" id="pfRemove" type="button">Remove</button><button class="close" id="pfClose" type="button" style="float:none">Close</button></div></div>';
+  document.body.appendChild(ov);
+  const fileIn = avEl('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.hidden = true; document.body.appendChild(fileIn);
+
+  function openProfile() {
+    if (!me) return;
+    $('pfName').textContent = me.name; $('pfUser').textContent = me.username ? '@' + me.username : '';
+    setAv($('pfBig'), me.id, initial(me.name));
+    $('pfRemove').style.display = avatars[me.id] ? '' : 'none';
+    ov.classList.add('open');
+  }
+  const closeProfile = () => ov.classList.remove('open');
+  $('pfClose').onclick = closeProfile;
+  ov.addEventListener('click', e => { if (e.target === ov) closeProfile(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProfile(); });
+
+  $('meAvatar').setAttribute('role', 'button'); $('meAvatar').tabIndex = 0; $('meAvatar').setAttribute('aria-label', 'Change profile photo');
+  $('meAvatar').onclick = openProfile;
+  $('meAvatar').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfile(); } });
+  const mi = avEl('button', '', 'Profile photo'); mi.setAttribute('role', 'menuitem'); mi.onclick = openProfile; $('newMenu').appendChild(mi);
+
+  $('pfChange').onclick = () => fileIn.click();
+  fileIn.onchange = () => { const f = fileIn.files[0]; fileIn.value = ''; if (f) saveAvatar(f); };
+
+  /* crop to a centred square and shrink, so uploads stay tiny */
+  function toSquare(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.naturalWidth, img.naturalHeight), cv = document.createElement('canvas');
+        cv.width = cv.height = AV_SIZE;
+        cv.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, AV_SIZE, AV_SIZE);
+        URL.revokeObjectURL(url);
+        cv.toBlob(b => b ? resolve(b) : reject(new Error('Could not process image')), 'image/jpeg', 0.88);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a supported image')); };
+      img.src = url;
+    });
+  }
+  async function clearOld(keep) {
+    try {
+      const { data } = await nookDb.storage.from(AV_BUCKET).list(me.id);
+      const old = (data || []).map(f => me.id + '/' + f.name).filter(p => p !== keep);
+      if (old.length) await nookDb.storage.from(AV_BUCKET).remove(old);
+    } catch (e) {}
+  }
+  async function saveAvatar(file) {
+    if (!file.type.startsWith('image/')) return toast('Please choose an image');
+    if (file.size > AV_MAX_IN) return toast('Image is over 15 MB');
+    $('pfChange').disabled = true; toast('Uploading photo…');
+    try {
+      const blob = await toSquare(file), path = me.id + '/' + Date.now() + '.jpg';
+      const up = await nookDb.storage.from(AV_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+      if (up.error) throw up.error;
+      const url = nookDb.storage.from(AV_BUCKET).getPublicUrl(path).data.publicUrl;
+      const { error } = await nookDb.from('profiles').update({ avatar_url: url }).eq('id', me.id);
+      if (error) throw error;
+      avatars[me.id] = url; clearOld(path); repaint();
+      $('pfRemove').style.display = ''; toast('Profile photo updated');
+    } catch (err) { toast('Could not save photo: ' + (err.message || err)); }
+    $('pfChange').disabled = false;
+  }
+  $('pfRemove').onclick = async () => {
+    const { error } = await nookDb.from('profiles').update({ avatar_url: null }).eq('id', me.id);
+    if (error) return toast('Could not remove photo: ' + error.message);
+    delete avatars[me.id]; clearOld(null); repaint(); $('pfRemove').style.display = 'none'; toast('Photo removed');
+  };
+})();
+</script>
 </body>
 </html>
