@@ -704,11 +704,11 @@ function insertAtCursor(t){
   i.dispatchEvent(new Event('input'));
 }
 
-/* *bold*  italic  italic  ⁠ code ⁠  links  @mentions */
+/* **bold**  *italic*  _italic_  `code`  links  @mentions */
 const isEmojiOnly = t => { const x = t.trim(); return x.length > 0 && x.length <= 16 && /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u.test(x) && Array.from(x.replace(/\s/g, '')).length <= 4; };
 function rich(text, c){
   const frag = document.createDocumentFragment();
-  const re = /(https?:\/\/[^\s<]+|⁠ [^ ⁠\n]+`|\\[^\n]+\\|\[^\n]+\|[^\n]+|@[A-Za-z0-9]{2,})/g;
+  const re = /(https?:\/\/[^\s<]+|`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|@[A-Za-z0-9]{2,})/g;
   let last = 0, m;
   const add = (tag, str, cls) => { const e = document.createElement(tag); if(cls) e.className = cls; e.textContent = str; frag.appendChild(e); return e; };
   while((m = re.exec(text))){
@@ -862,6 +862,308 @@ $('logout').onclick = async () => { await nookDb.auth.signOut(); location.href =
       .on('broadcast', { event: 'typing' }, ({ payload }) => onTyping(payload))
       .subscribe(st => { if(st === 'SUBSCRIBED') live.track({ at: Date.now() }); });
 })();
+</script>
+
+<!-- ===== Added features: notifications, pin chat, nicknames, photos/videos/documents, polls, more stickers ===== -->
+<script>
+(function () {
+  'use strict';
+  const BUCKET = 'chat-media', MAX = 25 * 1024 * 1024;
+  let nicks = {}, pollCache = {}, liveOn = false, notifyOn = store.get('nook-notify') !== 'off';
+  const notified = new Set(), signed = new Map();
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const sizeText = b => b < 1024 ? b + ' B' : b < 1048576 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
+  const docIcon = n => ({ pdf: '📕', doc: '📝', docx: '📝', txt: '📝', xls: '📊', xlsx: '📊', csv: '📊', ppt: '📽️', pptx: '📽️', zip: '🗜️', rar: '🗜️', '7z': '🗜️' })[(String(n || '').split('.').pop() || '').toLowerCase()] || '📄';
+
+  const css = document.createElement('style');
+  css.textContent = `
+.hbtn{margin-left:auto;border:0;background:var(--mist);border-radius:999px;padding:8px 14px;font-weight:600;font-size:14px}
+.head{cursor:pointer}
+.x-image,.x-video,.x-file,.x-poll{padding:6px}
+.x-image img,.x-video video{display:block;max-width:260px;width:100%;border-radius:12px;cursor:pointer;background:var(--mist);min-height:60px}
+.fcard{display:flex;gap:10px;align-items:center;padding:6px 8px;color:inherit;text-decoration:none;min-width:200px}
+.fcard .ic{font-size:28px}.fcard b{display:block;word-break:break-all}.fcard small{display:block;opacity:.7;text-align:left;margin:0}
+.poll{min-width:240px;max-width:300px}.poll .q{font-weight:700;padding:4px 6px 2px}.poll .ph{font-size:12px;opacity:.7;padding:0 6px 6px}
+.popt{position:relative;display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;border:1px solid rgba(18,26,51,.2);background:rgba(255,255,255,.6);color:#121A33;border-radius:12px;padding:8px 10px;margin-top:6px;overflow:hidden}
+.popt .fill{position:absolute;top:0;bottom:0;left:0;background:var(--glacier);opacity:.55}
+.popt span{position:relative}.popt.mine{border-color:#121A33;font-weight:600}
+.attm{position:fixed;z-index:45;display:none;background:var(--card);color:var(--ink);border-radius:14px;padding:6px;min-width:190px;box-shadow:0 18px 40px -12px rgba(0,0,0,.5)}
+.attm.open{display:block}.attm button{display:block;width:100%;text-align:left;background:none;border:0;padding:10px 12px;border-radius:10px;font-size:15px;color:inherit}.attm button:hover{background:var(--mist)}
+.popts input{margin-top:8px}.chk{display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--muted)}.chk input{width:auto;margin:0}`;
+  document.head.appendChild(css);
+
+  /* ---------- make the messages query also return the new columns ---------- */
+  const _from = nookDb.from.bind(nookDb);
+  nookDb.from = t => {
+    const q = _from(t);
+    if (t === 'messages') {
+      const s = q.select.bind(q);
+      q.select = (cols, o) => s(typeof cols === 'string' && cols.includes('sender_id') ? cols + ',file_path,file_name,file_type,file_size,poll_id' : cols, o);
+    }
+    return q;
+  };
+
+  /* ---------- signed links for private files ---------- */
+  async function urlFor(path, dl) {
+    const k = path + '|' + (dl || ''), h = signed.get(k);
+    if (h && h.t > Date.now()) return h.u;
+    const { data, error } = await nookDb.storage.from(BUCKET).createSignedUrl(path, 3600, dl ? { download: dl } : undefined);
+    if (error) throw error;
+    signed.set(k, { u: data.signedUrl, t: Date.now() + 3300e3 });
+    return data.signedUrl;
+  }
+  const nearBottom = () => { const b = $('msgs'); if (b.scrollHeight - b.scrollTop - b.clientHeight < 500) b.scrollTop = b.scrollHeight; };
+
+  function mediaEl(m) {
+    const w = el('div');
+    if (!m.file_path) { w.textContent = 'Attachment unavailable'; return w; }
+    if (m.kind === 'file') {
+      const a = el('a', 'fcard'), d = el('div'); a.href = '#';
+      d.append(el('b', '', m.file_name || 'File'), el('small', '', sizeText(m.file_size || 0)));
+      a.append(el('span', 'ic', docIcon(m.file_name)), d);
+      a.onclick = async e => {
+        e.preventDefault(); e.stopPropagation();
+        try { const t = el('a'); t.href = await urlFor(m.file_path, m.file_name || true); t.download = m.file_name || ''; document.body.appendChild(t); t.click(); t.remove(); }
+        catch (err) { toast('Could not open file'); }
+      };
+      return a;
+    }
+    const isImg = m.kind === 'image', n = isImg ? new Image() : el('video');
+    if (isImg) { n.alt = m.file_name || 'Photo'; n.onload = nearBottom; }
+    else { n.controls = true; n.preload = 'metadata'; n.playsInline = true; n.onloadedmetadata = nearBottom; }
+    n.onclick = e => { e.stopPropagation(); if (isImg) urlFor(m.file_path).then(u => window.open(u, '_blank', 'noopener')).catch(() => {}); };
+    urlFor(m.file_path).then(u => { n.src = u; }).catch(() => { if (isImg) n.alt = 'Could not load'; });
+    return n;
+  }
+
+  /* ---------- polls ---------- */
+  function drawPoll(box) {
+    const p = pollCache[box.dataset.poll]; box.replaceChildren();
+    if (!p) { box.appendChild(el('div', 'ph', 'Loading poll…')); return; }
+    const voters = new Set(); p.poll_options.forEach(o => o.poll_votes.forEach(v => voters.add(v.user_id)));
+    box.append(el('div', 'q', '📊 ' + p.question), el('div', 'ph', (p.multi ? 'Select one or more' : 'Select one') + ' · ' + voters.size + (voters.size === 1 ? ' voter' : ' voters')));
+    p.poll_options.forEach(o => {
+      const n = o.poll_votes.length, mine = o.poll_votes.some(v => v.user_id === me.id);
+      const b = el('button', 'popt' + (mine ? ' mine' : '')), f = el('i', 'fill'); b.type = 'button';
+      f.style.width = (voters.size ? Math.round(n / voters.size * 100) : 0) + '%';
+      b.append(f, el('span', '', (mine ? '✓ ' : '') + o.label), el('span', '', String(n)));
+      b.onclick = e => { e.stopPropagation(); vote(o.id, p.id); };
+      box.appendChild(b);
+    });
+  }
+  async function loadPolls(ids) {
+    if (!ids.length) return;
+    const { data, error } = await nookDb.from('polls').select('id,question,multi,poll_options(id,label,position,poll_votes(user_id))').in('id', ids);
+    if (error) return;
+    data.forEach(p => { p.poll_options.sort((a, b) => a.position - b.position); pollCache[p.id] = p; });
+    document.querySelectorAll('.poll').forEach(drawPoll);
+  }
+  const refreshPolls = () => loadPolls([...new Set([...document.querySelectorAll('.poll')].map(b => b.dataset.poll))]);
+  async function vote(oid, pid) {
+    const { error } = await nookDb.rpc('vote_poll', { p_option: oid });
+    if (error) return toast(error.message);
+    loadPolls([pid]);
+  }
+  function pollEl(m) {
+    const b = el('div', 'poll'); b.dataset.poll = m.poll_id;
+    drawPoll(b); if (!pollCache[m.poll_id]) loadPolls([m.poll_id]);
+    return b;
+  }
+
+  /* wrap addBubble: draw photos / videos / files / polls inside the normal bubble */
+  const _add = window.addBubble;
+  window.addBubble = function (c, m) {
+    const k = m.kind;
+    if (k !== 'image' && k !== 'video' && k !== 'file' && k !== 'poll') return _add(c, m);
+    const ob = m.body; m.body = ''; m.kind = 'text';
+    try { _add(c, m); } finally { m.body = ob; m.kind = k; }
+    const e = $('msgs').querySelector('[data-id="' + m.id + '"]'); if (!e) return;
+    e.classList.add('x-' + k);
+    e.insertBefore(k === 'poll' ? pollEl(m) : mediaEl(m), e.querySelector('small'));
+  };
+
+  /* ---------- sending files and polls ---------- */
+  async function sendFile(file, c) {
+    if (file.size > MAX) return toast(file.name + ' is over 25 MB');
+    const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+    const path = c.id + '/' + crypto.randomUUID() + '-' + file.name.replace(/[^\w.\-]+/g, '_').slice(-80);
+    toast('Uploading ' + file.name + '…');
+    const up = await nookDb.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'application/octet-stream' });
+    if (up.error) return toast('Upload failed: ' + up.error.message);
+    const row = { conversation_id: c.id, sender_id: me.id, kind, file_path: path, file_name: file.name, file_type: file.type, file_size: file.size,
+                  body: kind === 'image' ? '📷 Photo' : kind === 'video' ? '🎥 Video' : '📄 ' + file.name };
+    if (replyTo && active === c) row.reply_to = replyTo.id;
+    const { data, error } = await nookDb.from('messages').insert(row).select().single();
+    if (error) return toast('Not sent: ' + error.message);
+    if (active === c) clearReply();
+    handleMessage(data);
+  }
+  async function sendFiles(files) {
+    const c = active; if (!c || !canPost(c)) return;
+    for (const f of files) await sendFile(f, c);
+  }
+
+  const attBtn = el('button', 'tool', '＋'); attBtn.type = 'button'; attBtn.id = 'attachBtn'; attBtn.setAttribute('aria-label', 'Attach');
+  $('pickBtn').after(attBtn);
+  const mediaIn = el('input'), docIn = el('input');
+  mediaIn.type = docIn.type = 'file'; mediaIn.multiple = docIn.multiple = true; mediaIn.accept = 'image/*,video/*'; mediaIn.hidden = docIn.hidden = true;
+  document.body.append(mediaIn, docIn);
+  [mediaIn, docIn].forEach(i => i.onchange = () => { sendFiles([...i.files]); i.value = ''; });
+  const attm = el('div', 'attm');
+  [['🖼️ Photo or video', () => mediaIn.click()], ['📄 Document', () => docIn.click()], ['📊 Poll', () => openPoll()]].forEach(([t, fn]) => {
+    const b = el('button', '', t); b.type = 'button'; b.onclick = () => { attm.classList.remove('open'); fn(); }; attm.appendChild(b);
+  });
+  document.body.appendChild(attm);
+  attBtn.onclick = e => {
+    e.stopPropagation(); const r = attBtn.getBoundingClientRect();
+    attm.style.left = Math.max(8, Math.min(innerWidth - 200, r.left)) + 'px'; attm.style.bottom = (innerHeight - r.top + 8) + 'px';
+    attm.classList.toggle('open');
+  };
+  document.addEventListener('click', () => attm.classList.remove('open'));
+
+  /* poll dialog */
+  const pov = el('div', 'overlay'); pov.id = 'pollOv';
+  pov.innerHTML = '<div class="dialog"><h3>New poll</h3><input id="pQ" maxlength="200" placeholder="Ask a question" autocomplete="off"><div class="popts" id="pOpts"></div><button type="button" class="pchip" id="pAdd" style="margin-top:10px">+ Add option</button><label class="chk"><input type="checkbox" id="pMulti"> Allow multiple answers</label><div class="actions" style="margin-top:14px"><button class="close" id="pCancel" type="button" style="float:none">Cancel</button><button class="primary" id="pGo" type="button">Send poll</button></div></div>';
+  document.body.appendChild(pov);
+  const addOpt = () => { const i = el('input'); i.maxLength = 100; i.placeholder = 'Option ' + (document.querySelectorAll('#pOpts input').length + 1); $('pOpts').appendChild(i); };
+  function openPoll() {
+    if (!active || !canPost(active)) return;
+    $('pQ').value = ''; $('pMulti').checked = false; $('pOpts').innerHTML = ''; addOpt(); addOpt();
+    pov.classList.add('open'); $('pQ').focus();
+  }
+  $('pAdd').onclick = () => { if (document.querySelectorAll('#pOpts input').length < 6) addOpt(); else toast('Maximum 6 options'); };
+  $('pCancel').onclick = () => pov.classList.remove('open');
+  pov.addEventListener('click', e => { if (e.target === pov) pov.classList.remove('open'); });
+  $('pGo').onclick = async () => {
+    const q = $('pQ').value.trim(), opts = [...document.querySelectorAll('#pOpts input')].map(i => i.value.trim()).filter(Boolean), c = active;
+    if (!q) return toast('Write a question'); if (opts.length < 2) return toast('Add at least 2 options');
+    $('pGo').disabled = true;
+    const { data, error } = await nookDb.rpc('create_poll', { p_cid: c.id, p_question: q, p_options: opts, p_multi: $('pMulti').checked });
+    $('pGo').disabled = false;
+    if (error) return toast(error.message);
+    pov.classList.remove('open'); handleMessage(data);
+  };
+
+  /* ---------- more stickers ---------- */
+  '🥰 😘 🤗 🤔 🫡 😬 🥲 🤝 👋 🫶 🤞 🧠 👀 🎂 🎁 🏆 🥇 ⚽ 🏏 🎮 🎧 🎬 📚 💻 🚀 🌈 ☀️ 🌙 ⭐ 🌸 🐝 🦋 🐙 🐬 🧋 🥂'.split(' ').forEach(em => {
+    const b = el('button', 'stk', em); b.type = 'button'; b.setAttribute('aria-label', 'Send sticker ' + em);
+    b.onclick = async () => { if (await sendMessage('sticker', em)) $('picker').classList.remove('open'); };
+    $('pStickers').appendChild(b);
+  });
+
+  /* ---------- pin chat + info + nicknames ---------- */
+  const pinBtn = el('button', 'hbtn', 'Pin'); pinBtn.type = 'button'; pinBtn.id = 'pinBtn'; $('head').appendChild(pinBtn);
+  async function togglePin() {
+    const c = active; if (!c) return; const v = !c.pinned;
+    const { error } = await nookDb.rpc('set_chat_pin', { p_cid: c.id, p_pinned: v });
+    if (error) return toast(error.message);
+    c.pinned = v; renderList(); updateHeader(); toast(v ? 'Chat pinned' : 'Chat unpinned');
+  }
+  $('head').addEventListener('click', e => {
+    if (e.target.closest('.back')) return;
+    if (e.target.closest('#pinBtn')) { e.stopImmediatePropagation(); togglePin(); return; }
+    if (active && active.type === 'direct') { e.stopImmediatePropagation(); openInfo(active); }
+  }, true);
+
+  const _upd = window.updateHeader;
+  window.updateHeader = function () { _upd(); pinBtn.textContent = active && active.pinned ? 'Unpin' : 'Pin'; };
+
+  const _rl = window.renderList;
+  window.renderList = function () {
+    chats.sort((a, b) => (!!b.pinned) - (!!a.pinned));           // stable: keeps newest-first inside each group
+    _rl();
+    const q = $('q').value.trim().toLowerCase();
+    const rows = chats.filter(c => (filter === 'all' || c.type === filter) && c.name.toLowerCase().includes(q));
+    document.querySelectorAll('#list .item').forEach((it, i) => {
+      const t = it.querySelector('time'); if (rows[i] && rows[i].pinned && t) t.textContent = '📌 ' + t.textContent;
+    });
+  };
+
+  function applyNicks() {
+    chats.forEach(c => {
+      Object.entries(c.members).forEach(([id, u]) => { if (u.real == null) u.real = u.name; u.name = nicks[id] || u.real; });
+      if (c.type === 'direct' && c.other && c.members[c.other]) c.name = c.members[c.other].name;
+    });
+  }
+  async function setNick(id) {
+    let real = 'this person'; chats.forEach(c => { if (c.members[id]) real = c.members[id].real || c.members[id].name; });
+    const v = prompt('Nickname for ' + real + ' (only you can see it). Leave empty to remove.', nicks[id] || '');
+    if (v === null) return;
+    const n = v.trim().slice(0, 40);
+    const r = n ? await nookDb.from('nicknames').upsert({ owner_id: me.id, target_id: id, nickname: n })
+                : await nookDb.from('nicknames').delete().eq('owner_id', me.id).eq('target_id', id);
+    if (r.error) return toast('Could not save nickname: ' + r.error.message);
+    if (n) nicks[id] = n; else delete nicks[id];
+    applyNicks(); renderList(); updateHeader();
+    if (active) { const c = active; openChat(c); openInfo(c); }
+  }
+  function decorate(c) {
+    const ids = c.type === 'direct' ? [c.other] : Object.entries(c.members).sort((a, b) => (b[0] === c.owner) - (a[0] === c.owner)).map(x => x[0]);
+    document.querySelectorAll('#iMembers .member').forEach((row, i) => {
+      const id = ids[i]; if (!id || id === me.id) return;
+      const b = el('button', 'pchip', nicks[id] ? 'Edit nickname' : 'Set nickname'); b.type = 'button'; b.style.marginLeft = '8px'; b.onclick = () => setNick(id); row.appendChild(b);
+    });
+  }
+  const _info = window.openInfo;
+  window.openInfo = function (c) {
+    $('iLeave').style.display = '';
+    if (c.type === 'direct') {
+      const u = c.members[c.other] || { name: c.name, username: '' };
+      $('iTitle').textContent = c.name; $('iHint').textContent = 'Direct chat' + (u.real && u.real !== u.name ? ' · real name: ' + u.real : '');
+      const box = $('iMembers'); box.innerHTML = '';
+      const r = el('div', 'member'); r.innerHTML = '<div class="avatar"></div><div><b></b><small></small></div>';
+      const av = r.querySelector('.avatar'); av.textContent = initial(u.name); if (online.has(c.other)) av.classList.add('on');
+      r.querySelector('b').textContent = u.name; r.querySelector('small').textContent = (u.username ? '@' + u.username : '') + (online.has(c.other) ? ' · online' : '');
+      box.appendChild(r); $('iLeave').style.display = 'none'; $('iOverlay').classList.add('open');
+    } else _info(c);
+    decorate(c);
+  };
+
+  /* ---------- data: pins + nicknames, live poll votes ---------- */
+  const _lc = window.loadChats;
+  window.loadChats = async function () {
+    await _lc();
+    const [pn, nk] = await Promise.all([
+      nookDb.from('conversation_members').select('conversation_id,pinned').eq('user_id', me.id),
+      nookDb.from('nicknames').select('target_id,nickname').eq('owner_id', me.id)
+    ]);
+    if (!pn.error) pn.data.forEach(r => { if (byId[r.conversation_id]) byId[r.conversation_id].pinned = !!r.pinned; });
+    if (!nk.error) { nicks = {}; nk.data.forEach(r => { nicks[r.target_id] = r.nickname; }); }
+    applyNicks(); renderList(); updateHeader();
+    if (!liveOn) {
+      liveOn = true; let t;
+      nookDb.channel('nook-polls').on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' }, () => { clearTimeout(t); t = setTimeout(refreshPolls, 300); }).subscribe();
+    }
+  };
+
+  /* ---------- new message notifications ---------- */
+  const nb = el('button', ''); nb.setAttribute('role', 'menuitem'); $('newMenu').appendChild(nb);
+  const nbLabel = () => { nb.textContent = 'Notifications: ' + (window.Notification && Notification.permission === 'denied' ? 'blocked' : notifyOn ? 'on' : 'off'); };
+  nbLabel();
+  nb.onclick = async () => {
+    notifyOn = !notifyOn; store.set('nook-notify', notifyOn ? 'on' : 'off');
+    if (notifyOn && window.Notification && Notification.permission === 'default') await Notification.requestPermission();
+    if (notifyOn && window.Notification && Notification.permission === 'denied') toast('Notifications are blocked in your browser settings');
+    nbLabel();
+  };
+  document.addEventListener('pointerdown', () => {
+    if (notifyOn && window.Notification && Notification.permission === 'default') Notification.requestPermission().then(nbLabel);
+  }, { once: true });
+
+  function notify(m) {
+    if (!me || m.sender_id === me.id || notified.has(m.id)) return; notified.add(m.id);
+    const c = byId[m.conversation_id]; if (!c || !notifyOn) return;
+    const open = !document.hidden && active && active.id === c.id; if (open) return;
+    const text = (c.type === 'direct' ? '' : nameOf(c, m.sender_id) + ': ') + snippet(m);
+    if (document.hidden && window.Notification && Notification.permission === 'granted') {
+      try { const n = new Notification(c.name, { body: text, tag: c.id }); n.onclick = () => { window.focus(); openChat(c); n.close(); }; return; } catch (e) {}
+    }
+    toast(c.name + ' · ' + text);
+  }
+  const _hm = window.handleMessage;
+  window.handleMessage = async function (m) { await _hm(m); try { notify(m); } catch (e) {} };
+})();
+
 </script>
 </body>
 </html>
