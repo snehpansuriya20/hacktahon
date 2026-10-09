@@ -1571,7 +1571,6 @@ html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
   };
 })();
 </script>
-  
 
 <!-- ===== Added feature: voice and video calls (WebRTC, signalling over Supabase Realtime) ===== -->
 <script>
@@ -1859,6 +1858,499 @@ html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
     if (msg) toast(msg);
   }
   window.addEventListener('beforeunload', () => { if (call) send(call.peer, { t: 'end', id: call.id }); });
+})();
+</script>
+
+<!-- ===== Added feature: "Catch me up" (privacy-first, Hinglish-aware, runs on your device) ===== -->
+<script>
+(function () {
+  'use strict';
+  /* HOW IT STAYS PRIVATE
+     - Nothing runs in the background. The chat is only read when someone taps "Catch me up"
+       (banner, the sparkle button, or the header of a read-only broadcast) or types @nook.
+     - The summary is built right here in the browser. No message is sent to any AI server.
+     - Group admins can switch it off. The database only records that a tap happened (never text). */
+  const DAY = 864e5, BANNER_MIN = 5;
+  const ce = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; };
+  const fmtDay = d => d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  const fmtShort = d => d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const startToday = () => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; };
+  const tokens = s => s.match(/[\p{L}\p{N}]+/gu) || [];
+
+  /* ------------------------------------------------------------------ styles */
+  const css = ce('style');
+  css.textContent = `
+.cuBanner{display:none;align-items:center;gap:10px;padding:10px 22px;background:linear-gradient(90deg,var(--pine),#2b8f77);color:#fff}
+.cuBanner span{flex:1;font-size:14px;font-weight:500}
+.cuBanner button{border:0;border-radius:999px;padding:7px 14px;font-weight:700;font-size:14px}
+.cuBanner .go{background:var(--marigold);color:var(--ink)}
+.cuBanner .x{background:rgba(255,255,255,.2);color:#fff;padding:7px 11px}
+#cuOv .dialog{max-width:620px;max-height:92vh;overflow-y:auto}
+#cuOv h3{margin-bottom:2px}
+.cuCtl{display:flex;flex-direction:column;gap:8px;margin:8px 0 6px}
+.cuSeg{display:flex;gap:4px;flex-wrap:wrap}
+.cuSeg button{border:0;background:var(--mist);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+.cuSeg button[aria-pressed="true"]{background:var(--marigold);color:var(--ink)}
+.cuSeg button:disabled{opacity:.4;cursor:default}
+.cuTl{background:var(--snow);border-left:4px solid var(--marigold);border-radius:12px;padding:12px 14px;margin:10px 0;line-height:1.5;font-size:15px}
+.cuTl small{display:block;margin-top:6px;color:var(--muted);font-size:13px}
+.cuSec h4{font-family:var(--head);font-size:17px;margin:16px 0 6px}
+.cuit{display:block;width:100%;text-align:left;border:0;background:var(--snow);border-radius:12px;padding:8px 12px;margin-bottom:6px;color:inherit}
+.cuit:hover{background:var(--mist)}
+.cuit b{font-size:13px}.cuit small{opacity:.65;margin-left:6px;font-size:12px}
+.cuit .tx{font-size:14px;overflow-wrap:anywhere;margin-top:2px}
+.cuwhen{display:inline-block;background:var(--marigold);color:var(--ink);font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;margin-left:8px}
+.cuwhen.past{background:var(--mist);color:var(--muted)}
+.cuTop{display:flex;flex-wrap:wrap;gap:6px}
+.cuTop span{background:var(--mist);border-radius:999px;padding:3px 11px;font-size:13px;font-weight:600}
+.cuMore{font-size:13px;color:var(--muted);padding:2px 4px}
+.cuPriv{font-size:13px;color:var(--muted);background:var(--snow);border-radius:12px;padding:10px 12px;margin-top:14px;line-height:1.45}
+.cuInfo{font-size:13px;color:var(--muted);background:var(--snow);border-radius:12px;padding:8px 12px;margin:0 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cuInfo div{flex:1;min-width:200px}
+#cuBtn{font-size:20px}
+@media (max-width:860px){.cuBanner{padding:10px 14px}}`;
+  document.head.appendChild(css);
+
+  /* ------------------------------------------------------------------ language: English + Hinglish labels */
+  const LBL = {
+    en: {
+      since: 'Since I left', last: n => 'Last ' + n, tldr: 'TL;DR', you: 'For you', dl: 'Deadlines', dec: 'Decisions', q: 'Open questions', links: 'Links shared', topics: 'Topics',
+      noDl: 'No deadlines spotted.', noDec: 'No decisions spotted.', noQ: 'No unanswered questions. Nice!',
+      today: 'Today', tom: 'Tomorrow', passed: 'Passed', more: n => '+' + n + ' more not shown', tap: 'Tap any item to jump to the message.',
+      empty: 'No messages in this range.', loading: 'Reading this chat on your device…',
+      sub: n => n + ' messages read, on your device',
+      banner: n => n + ' new messages since you were last here', bannerGo: '✨ Catch me up',
+      copy: 'Copy', share: 'Share to chat', close: 'Close', copied: 'Summary copied',
+      priv: '🔒 Private by design: Nook read this chat only because you tapped Catch me up (or typed @nook). The summary was made on your device. No message was sent to any AI server, and nothing is read in the background.',
+      use: n => 'Catch me up was used ' + n + (n === 1 ? ' time' : ' times') + ' in this chat this week (count only, no names).',
+      shareNote: 'Summarised on-device with Nook. Only runs when someone taps it, never in the background.',
+      people: n => n + (n === 1 ? ' person' : ' people'), todayWord: 'today', span: (a, b) => a + ' to ' + b,
+      tl: (r, sp, tp) => r.total + ' messages from ' + r.people + (r.people === 1 ? ' person' : ' people') + ', ' + sp + '.' +
+        (tp.length ? ' Mostly about ' + tp.join(', ') + '.' : '') +
+        ' Found ' + r.nDl + (r.nDl === 1 ? ' deadline' : ' deadlines') + ', ' + r.nDec + (r.nDec === 1 ? ' decision' : ' decisions') + ' and ' + r.nQ + (r.nQ === 1 ? ' open question.' : ' open questions.')
+    },
+    hi: {
+      since: 'Jab se gaya tha', last: n => 'Pichle ' + n, tldr: 'Short mein', you: 'Tumhare liye', dl: 'Deadlines', dec: 'Decisions (jo tay hua)', q: 'Open sawaal', links: 'Links', topics: 'Kya-kya baat hui',
+      noDl: 'Koi deadline nahi mili.', noDec: 'Koi decision nahi mila.', noQ: 'Koi sawaal pending nahi. Badhiya!',
+      today: 'Aaj', tom: 'Kal', passed: 'Nikal gayi', more: n => '+' + n + ' aur, yahan nahi dikhaye', tap: 'Kisi bhi item pe tap karo, seedha us message pe jaoge.',
+      empty: 'Is range mein koi message nahi.', loading: 'Tumhare device par ye chat padh rahe hain…',
+      sub: n => n + ' messages padhe, tumhare device par',
+      banner: n => n + ' naye messages jab se tum yahan the', bannerGo: '✨ Catch me up',
+      copy: 'Copy karo', share: 'Chat mein share karo', close: 'Band karo', copied: 'Summary copy ho gayi',
+      priv: '🔒 Privacy pehle: Nook ne ye chat sirf isliye padhi kyunki tumne Catch me up dabaya (ya @nook likha). Summary tumhare apne device par bani hai. Koi message kisi AI server ko nahi gaya, aur background mein kuch nahi padha jaata.',
+      use: n => 'Is hafte is chat mein Catch me up ' + n + ' baar use hua (sirf ginti, naam nahi).',
+      shareNote: 'Nook ne device par hi summary banayi. Sirf tap karne par chalta hai, background mein kabhi nahi.',
+      people: n => n + ' log', todayWord: 'aaj', span: (a, b) => a + ' se ' + b + ' tak',
+      tl: (r, sp, tp) => r.total + ' messages, ' + r.people + ' log, ' + sp + '.' +
+        (tp.length ? ' Zyada baat: ' + tp.join(', ') + '.' : '') +
+        ' ' + r.nDl + ' deadline, ' + r.nDec + ' decision aur ' + r.nQ + ' sawaal abhi open hain.'
+    }
+  };
+
+  /* ------------------------------------------------------------------ Hinglish-aware engine (all on-device) */
+  const STOP = new Set(('the a an is are was were to of in on at for and or but not i you we it this that be have has do does did will can so if with just as by from my me your pls please thanks thank ok okay yes no hi hello hey ' +
+    'hai hain ho hu hoon ka ki ke ko se mein me par pe aur ya toh to bhi nahi nhi na kya koi ye yeh wo woh is us ek bhai yaar yar kal aaj hi tha thi the hum tum aap sab bas acha accha haan han kar karo kro karna krna raha rha rahi gaya gya gayi kaise kaun kab kyu kyun kahan kitna abhi jab tab agar lekin matlab chalo chal bata batao bolo dedo de do lena dena kuch kuchh bohot bahut zyada thoda jaldi mujhe mereko tumhe apna apni uska uski unka isko usko hoga hogi honge lag lga lagta kisi kaha kehna bola boli meri mera mere teri tera tere sir mam guys group msg message get got any all one also still would could should about there their they them what when where how who which why been being into out up down more than then now too very much many some really only dont cant its ' +
+    'bhej bhejo bhejna sabko sabne wala wali waale hota hoti hote karke karenge krenge karna padega padhna dekho dekh dekhna aao aana jana jao chahiye chahta chahte').split(' '));
+  const HING = new Set('hai hain kya nahi nhi hum tum yaar yar bhai kal aaj acha accha haan kar karo kro karna krna raha rha rahi gaya gya gayi kaise kab kyu kyun kahan kitna abhi lekin matlab chalo pakka bata batao bolo bohot bahut jaldi mujhe mereko tumhe karenge krenge hoga hogi honge kuch kuchh bhej bhejo padega chahiye sabko wala toh mein tha thi tay jama parso'.split(' '));
+
+  const MONTHS = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+  const DAYS = 'mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?';
+  const MIDX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const DIDX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const RE_DATE = new RegExp('\\b\\d{1,2}(?:st|nd|rd|th)?\\s*(?:of\\s*)?(?:' + MONTHS + ')\\b|\\b(?:' + MONTHS + ')\\s*\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?\\b');
+  const RE_TIME = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje)\b|\b\d{1,2}:\d{2}\b|\b(?:midnight|noon)\b/;
+  const RE_REL = new RegExp('\\b(?:today|tonight|tomorrow|tomorow|tmrw|tmr|aaj|kal|kl|parso|parson|next week|agle hafte|is hafte|this week|weekend|' + DAYS + ')\\b');
+  const RE_STRONG = /\b(?:deadline|dead line|due date|due(?!\s+to)|last date|last day|cut-?off|submit|submission|jama|jama karna|upload karo|upload kar do)\b/;
+  const RE_TASK = /\b(?:assignment|assgn|asgn|exam|quiz|test|viva|presentation|ppt|lab|project|report|record|practical|mid ?sem|end ?sem|midsem|endsem|internals?|form|registration|fees?|evaluation|demo|seminar|tutorial|worksheet|hackathon|interview|placement|drive|class)\b/;
+  const RE_DEC = /\b(?:decided|decision|finali[sz]ed|confirmed|confirm ho|pakka|tay hua|tay ho|tai ho|approved|agreed|cancel(?:l?ed)?|postponed|prepone[d]?|rescheduled|shifted to|moved to|no class|class nahi|holiday|chutti|let'?s go with|going with|final (?:hai|hua|ho gaya|decision|date|time|call)|fix (?:hai|ho gaya|kar diya|kiya)|(?:ho|hua) gaya (?:final|fix|pakka)|sorted|locked|decide (?:kiya|kar liya|hua|ho gaya)|toh phir|chalo phir|milte hain|milenge|sabne|everyone agreed)\b/;
+  const RE_QW = /^(?:kya|kab|kaun|kaise|kyun|kyu|kahan|kidhar|kitne|kitna|kitni|kaunsa|kaunsi|konsa|kis|what|when|where|how|why|who|which|anyone|koi)\b/;
+  const RE_ASK = /\b(?:bata(?:o|na| do|iye)|pata hai|pta hai|any idea|please help|help me|help karo|does anyone|can someone|could someone)\b/;
+  const RE_ANS = /\b(?:haan|han|yes|yep|yeah|nahi|nhi|no|nope|hoga|hogi|done|ok|okay|sure)\b/;
+
+  const isQ = t => {
+    t = t.trim(); if (t.length < 8) return false;
+    if (t.includes('?')) return true;
+    const l = t.toLowerCase(); return RE_QW.test(l) || RE_ASK.test(l);
+  };
+
+  function resolveWhen(t, at) {
+    const base = new Date(at); base.setHours(0, 0, 0, 0);
+    const back = new Date(base.getTime() - 30 * DAY);
+    let day = null, mon = null, m = t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:of\\s*)?(' + MONTHS + ')\\b'));
+    if (m) { day = +m[1]; mon = MIDX[m[2].slice(0, 3)]; }
+    else if ((m = t.match(new RegExp('\\b(' + MONTHS + ')\\s*(\\d{1,2})(?:st|nd|rd|th)?\\b')))) { mon = MIDX[m[1].slice(0, 3)]; day = +m[2]; }
+    if (mon != null && day >= 1 && day <= 31) {
+      const d = new Date(base.getFullYear(), mon, day); if (d < back) d.setFullYear(d.getFullYear() + 1); return d;
+    }
+    m = t.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
+    if (m) {
+      const dd = +m[1], mm = +m[2];
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
+        let y = m[3] ? +m[3] : base.getFullYear(); if (y < 100) y += 2000;
+        const d = new Date(y, mm - 1, dd); if (!m[3] && d < back) d.setFullYear(y + 1); return d;
+      }
+    }
+    if (/\b(?:parso|parson|day after tomorrow)\b/.test(t)) return addDays(base, 2);
+    if (/\b(?:kal|kl|tomorrow|tomorow|tmrw|tmr)\b/.test(t)) return addDays(base, 1);
+    if (/\b(?:aaj|today|tonight)\b/.test(t)) return base;
+    m = t.match(new RegExp('\\b(' + DAYS + ')\\b'));
+    if (m) { let diff = (DIDX[m[1].slice(0, 3)] - base.getDay() + 7) % 7; if (diff === 0) diff = 7; return addDays(base, diff); }
+    return null;
+  }
+
+  function analyze(raw, c) {
+    const msgs = raw.filter(m => (!m.kind || m.kind === 'text') && m.body && !/^(?:📞|✨ Catch me up)/.test(m.body));
+    const r = { total: raw.length, texts: msgs.length, first: raw[0], last: raw[raw.length - 1], hing: 0,
+      media: { image: 0, video: 0, file: 0, poll: 0 }, deadlines: [], decisions: [], open: [], you: [], links: [], topics: [],
+      nDl: 0, nDec: 0, nQ: 0, moreDl: 0, moreDec: 0, moreQ: 0 };
+    const people = new Set();
+    raw.forEach(m => { people.add(m.sender_id); if (r.media[m.kind] != null) r.media[m.kind]++; });
+    r.people = people.size;
+
+    const myU = (me.username || '').toLowerCase(), myF = (me.name || '').split(' ')[0].toLowerCase();
+    const nameToks = new Set(['nook']);
+    Object.values(c.members).forEach(u => tokens(String(u.name || '').toLowerCase()).forEach(w => nameToks.add(w)));
+    const mine = new Set(raw.filter(m => m.sender_id === me.id).map(m => m.id));
+    const kw = s => tokens(s.toLowerCase()).filter(w => w.length >= 4 && !STOP.has(w) && !nameToks.has(w) && !/^\d+$/.test(w));
+    const qFlag = msgs.map(m => isQ(m.body));
+    const freq = {}, seen = new Set(), dls = [], decs = [], links = new Set();
+    const t0 = startToday();
+
+    msgs.forEach((m, i) => {
+      const low = m.body.toLowerCase(), toks = tokens(low), key = low.replace(/\s+/g, ' ').trim();
+      if (toks.some(w => HING.has(w))) r.hing++;
+      new Set(kw(low)).forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+      (m.body.match(/https?:\/\/[^\s<]+/g) || []).forEach(u => {
+        u = u.replace(/[.,!?)]+$/, ''); if (!links.has(u)) { links.add(u); r.links.push({ m, u }); }
+      });
+      if (m.sender_id !== me.id &&
+          ((myU && low.includes('@' + myU)) || (myF.length >= 3 && toks.includes(myF)) || (m.reply_to && mine.has(m.reply_to)))) r.you.push(m);
+      if (seen.has(key)) return; seen.add(key);
+
+      const hasWhen = RE_DATE.test(low) || RE_TIME.test(low) || RE_REL.test(low);
+      const isDl = !qFlag[i] && ((RE_STRONG.test(low) && (hasWhen || RE_TASK.test(low))) || (hasWhen && RE_TASK.test(low) && /\b(?:tak|by|before|pehle|submit|due|hai|hoga|hogi|will|is)\b/.test(low)));
+      if (isDl) {
+        const tm = low.match(RE_TIME);
+        dls.push({ m, when: resolveWhen(low, m.created_at), time: tm ? tm[0].replace(/\s+/g, '').toUpperCase().replace(/(BAJE|BJE)$/, ' baje') : '' });
+      } else if (!qFlag[i] && m.body.length >= 12 && RE_DEC.test(low)) decs.push(m);
+    });
+
+    /* open questions: nobody replied and nobody seems to have answered */
+    const open = [];
+    msgs.forEach((q, i) => {
+      if (!qFlag[i]) return;
+      const qk = new Set(kw(q.body));
+      let ans = msgs.some(n => n.reply_to === q.id && n.sender_id !== q.sender_id);
+      for (let j = i + 1; !ans && j < msgs.length && j <= i + 6; j++) {
+        const n = msgs[j]; if (n.sender_id === q.sender_id || qFlag[j]) continue;
+        const nl = n.body.toLowerCase();
+        if (kw(nl).some(w => qk.has(w)) || (j <= i + 2 && (/\d/.test(nl) || RE_ANS.test(nl)))) ans = true;
+      }
+      if (!ans) open.push(q);
+    });
+
+    const up = dls.filter(d => d.when && d.when >= t0).sort((a, b) => a.when - b.when);
+    const und = dls.filter(d => !d.when);
+    const past = dls.filter(d => d.when && d.when < t0);
+    const allDl = [...up, ...und, ...past.slice(-3)];
+    r.nDl = allDl.length; r.deadlines = allDl.slice(0, 8); r.moreDl = Math.max(0, allDl.length - 8);
+    r.nDec = decs.length; r.decisions = decs.slice(-8); r.moreDec = Math.max(0, decs.length - 8);
+    r.nQ = open.length; r.open = open.slice(-8); r.moreQ = Math.max(0, open.length - 8);
+    r.you = r.you.slice(-6); r.links = r.links.slice(-6);
+    r.topics = Object.entries(freq).filter(e => e[1] >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(e => e[0]);
+    if (!r.topics.length) r.topics = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 4).map(e => e[0]);
+    return r;
+  }
+
+  /* ------------------------------------------------------------------ the panel */
+  const ov = ce('div', 'overlay'); ov.id = 'cuOv';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Catch me up');
+  ov.innerHTML = '<div class="dialog"><h3>✨ Catch me up</h3><p class="hint" id="cuSub" style="padding:2px 0 0"></p>' +
+    '<div class="cuCtl"><div class="cuSeg" id="cuRange"></div><div class="cuSeg" id="cuLang"></div></div>' +
+    '<div id="cuBody"></div><div class="cuPriv" id="cuPriv"></div>' +
+    '<div class="actions" style="margin-top:14px;align-items:center"><button class="close" id="cuClose" type="button" style="float:none"></button>' +
+    '<span style="display:flex;gap:8px"><button class="pchip" id="cuCopy" type="button"></button><button class="primary" id="cuShare" type="button"></button></span></div></div>';
+  document.body.appendChild(ov);
+
+  let cu = null, seq = 0;
+  const L = () => LBL[(cu && cu.lang) || 'en'];
+  const closePanel = () => { ov.classList.remove('open'); cu = null; seq++; };
+  $('cuClose').onclick = closePanel;
+  ov.addEventListener('click', e => { if (e.target === ov) closePanel(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) closePanel(); });
+
+  function drawCtl() {
+    const l = L(), r = $('cuRange'), g = $('cuLang');
+    r.replaceChildren(); g.replaceChildren();
+    [['missed', l.since], [50, l.last(50)], [200, l.last(200)], [500, l.last(500)]].forEach(([v, t]) => {
+      const b = ce('button', '', t); b.type = 'button'; b.setAttribute('aria-pressed', String(cu.range === v));
+      if (v === 'missed' && !cu.c.catchFrom) b.disabled = true;
+      b.onclick = () => { if (cu.range === v) return; cu.range = v; load(); };
+      r.appendChild(b);
+    });
+    [['en', 'English'], ['hi', 'Hinglish']].forEach(([v, t]) => {
+      const b = ce('button', '', t); b.type = 'button'; b.setAttribute('aria-pressed', String(cu.lang === v));
+      b.onclick = () => { cu.lang = v; store.set('nook-cu-lang', v); if (cu.res) render(); else drawCtl(); };
+      g.appendChild(b);
+    });
+    $('cuClose').textContent = l.close; $('cuCopy').textContent = l.copy; $('cuShare').textContent = l.share;
+  }
+  function paintPriv() {
+    const l = L(); $('cuPriv').textContent = l.priv + (cu && cu.use != null ? ' ' + l.use(cu.use) : '');
+  }
+  function chipFor(d, l) {
+    if (!d.when) return d.time ? { t: d.time } : null;
+    const diff = Math.round((d.when - startToday()) / DAY), parts = [];
+    const rel = diff < 0 ? l.passed : diff === 0 ? l.today : diff === 1 ? l.tom : '';
+    if (rel) parts.push(rel); parts.push(fmtDay(d.when)); if (d.time) parts.push(d.time);
+    return { t: parts.join(' · '), past: diff < 0 };
+  }
+  function spanText(r, l) {
+    const a = new Date(r.first.created_at), b = new Date(r.last.created_at);
+    if (a.toDateString() === b.toDateString()) return a.toDateString() === new Date().toDateString() ? l.todayWord : fmtShort(a);
+    return l.span(fmtShort(a), fmtShort(b));
+  }
+  function jumpFromPanel(m) {
+    closePanel();
+    if ($('msgs').querySelector('[data-id="' + m.id + '"]')) setTimeout(() => jumpTo(m.id), 60);
+    else toast('That message is older than what is loaded in this chat');
+  }
+  function itemBtn(c, m, chip) {
+    const b = ce('button', 'cuit'), h = ce('div'); b.type = 'button';
+    h.append(ce('b', '', nameOf(c, m.sender_id)), ce('small', '', fmt(m.created_at)));
+    if (chip) h.append(ce('span', 'cuwhen' + (chip.past ? ' past' : ''), chip.t));
+    b.append(h, ce('div', 'tx', clip(m.body, 170)));
+    b.onclick = () => jumpFromPanel(m);
+    return b;
+  }
+  function section(id, icon, title, nodes, emptyTxt, more, l) {
+    const s = ce('div', 'cuSec'); s.id = 'cuS-' + id;
+    s.append(ce('h4', '', icon + ' ' + title));
+    if (nodes.length) { nodes.forEach(n => s.append(n)); if (more) s.append(ce('div', 'cuMore', l.more(more))); }
+    else if (emptyTxt) s.append(ce('p', 'hint', emptyTxt));
+    return s;
+  }
+
+  function render() {
+    const s = cu; if (!s || !s.res) return;
+    const l = L(), r = s.res, c = s.c, body = $('cuBody');
+    drawCtl(); paintPriv();
+    $('cuSub').textContent = l.sub(r.total);
+    $('cuShare').style.display = canPost(c) ? '' : 'none';
+    body.replaceChildren();
+    $('cuCopy').disabled = $('cuShare').disabled = !r.total;
+    if (!r.total) { body.appendChild(ce('p', 'hint', l.empty)); return; }
+
+    const tl = ce('div', 'cuTl', l.tl(r, spanText(r, l), r.topics.slice(0, 4)));
+    const mediaBits = [['image', '📷'], ['video', '🎥'], ['file', '📄'], ['poll', '📊']].filter(x => r.media[x[0]]).map(x => x[1] + ' ' + r.media[x[0]]);
+    if (mediaBits.length) tl.append(ce('small', '', mediaBits.join('   ')));
+    body.appendChild(tl);
+
+    if (r.you.length) body.appendChild(section('you', '👋', l.you, r.you.map(m => itemBtn(c, m)), '', 0, l));
+    body.appendChild(section('deadlines', '📅', l.dl, r.deadlines.map(d => itemBtn(c, d.m, chipFor(d, l))), l.noDl, r.moreDl, l));
+    body.appendChild(section('decisions', '✅', l.dec, r.decisions.map(m => itemBtn(c, m)), l.noDec, r.moreDec, l));
+    body.appendChild(section('open', '❓', l.q, r.open.map(m => itemBtn(c, m)), l.noQ, r.moreQ, l));
+    if (r.links.length) body.appendChild(section('links', '🔗', l.links, r.links.map(x => itemBtn(c, x.m)), '', 0, l));
+    if (r.topics.length) {
+      const sec = ce('div', 'cuSec'), tp = ce('div', 'cuTop');
+      sec.append(ce('h4', '', '🏷️ ' + l.topics)); r.topics.forEach(w => tp.append(ce('span', '', w))); sec.append(tp); body.appendChild(sec);
+    }
+    body.appendChild(ce('p', 'cuMore', l.tap));
+    if (s.focus) { const t = $('cuS-' + s.focus); s.focus = null; if (t) setTimeout(() => t.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80); }
+  }
+
+  async function fetchRange(c, range) {
+    const cols = 'id,conversation_id,sender_id,body,kind,reply_to,created_at';
+    try {
+      let q = nookDb.from('messages').select(cols).eq('conversation_id', c.id);
+      if (range === 'missed' && c.catchFrom) {
+        const { data, error } = await q.gt('created_at', new Date(c.catchFrom).toISOString()).order('created_at', { ascending: true }).limit(1000);
+        if (error) throw error; return data || [];
+      }
+      const { data, error } = await q.order('created_at', { ascending: false }).limit(typeof range === 'number' ? range : 200);
+      if (error) throw error; return (data || []).reverse();
+    } catch (e) {
+      const all = c.loaded ? c.msgs : [];
+      if (range === 'missed' && c.catchFrom) { const t = Date.parse(c.catchFrom); return all.filter(m => Date.parse(m.created_at) > t); }
+      return all.slice(-(typeof range === 'number' ? range : 200));
+    }
+  }
+
+  async function load() {
+    const s = cu; if (!s) return; const my = ++seq;
+    s.res = null; drawCtl();
+    $('cuBody').replaceChildren(ce('p', 'hint', L().loading)); $('cuSub').textContent = ''; paintPriv();
+    $('cuCopy').disabled = $('cuShare').disabled = true;
+    /* this is the only moment a chat is read: log the tap (never text) and honour the admin switch */
+    const g = await nookDb.rpc('log_ai_request', { p_cid: s.c.id, p_range: String(s.range) });
+    if (g.error && !/PGRST202|schema cache|does not exist|Could not find/i.test((g.error.code || '') + ' ' + (g.error.message || ''))) {
+      closePanel(); toast(g.error.message); return;
+    }
+    const raw = await fetchRange(s.c, s.range);
+    if (my !== seq || cu !== s) return;
+    s.res = analyze(raw, s.c);
+    if (!s.lang) s.lang = s.res.texts && s.res.hing / s.res.texts > 0.25 ? 'hi' : 'en';
+    render();
+    nookDb.rpc('ai_usage_count', { p_cid: s.c.id }).then(x => {
+      if (!x.error && typeof x.data === 'number' && cu === s) { s.use = x.data; paintPriv(); }
+    }).catch(() => {});
+  }
+
+  function openCatchUp(c, o) {
+    o = o || {};
+    if (!c) return toast('Open a chat first');
+    if (c.aiOff) return toast('An admin turned Catch me up off in this chat');
+    let range = o.range != null ? o.range : (c.catchFrom && missedCount(c) > 0 ? 'missed' : 200);
+    if (range === 'missed' && !c.catchFrom) range = 200;
+    cu = { c, range, lang: o.lang || store.get('nook-cu-lang') || null, focus: o.focus || null, res: null, use: null };
+    ov.classList.add('open');
+    return load();
+  }
+
+  /* summary as plain text (for Copy and Share to chat) */
+  function plain(s) {
+    const l = LBL[s.lang || 'en'], r = s.res, c = s.c, out = [];
+    const nm = id => (c.members[id] && c.members[id].name) || 'Someone';
+    out.push('✨ Catch me up · ' + l.tldr, l.tl(r, spanText(r, l), r.topics.slice(0, 4)));
+    const sec = (ico, title, items, fn) => { if (!items.length) return; out.push('', ico + ' ' + title); items.slice(0, 5).forEach(x => out.push('• ' + fn(x))); };
+    sec('📅', l.dl, r.deadlines, d => { const k = chipFor(d, l); return (k ? k.t + ' — ' : '') + nm(d.m.sender_id) + ': ' + clip(d.m.body, 90); });
+    sec('✅', l.dec, r.decisions, m => nm(m.sender_id) + ': ' + clip(m.body, 90));
+    sec('❓', l.q, r.open, m => nm(m.sender_id) + ': ' + clip(m.body, 90));
+    out.push('', '🔒 ' + l.shareNote);
+    return out.join('\n').slice(0, 1900);
+  }
+  $('cuCopy').onclick = async () => {
+    if (!cu || !cu.res) return;
+    try { await navigator.clipboard.writeText(plain(cu)); toast(L().copied); } catch (e) { toast('Could not copy'); }
+  };
+  $('cuShare').onclick = async () => {
+    const s = cu; if (!s || !s.res || !s.res.total) return;
+    if (!canPost(s.c)) return toast('Only the sender can post here');
+    const text = plain(s); closePanel();
+    if (active && active.id === s.c.id) await sendMessage('text', text);
+  };
+
+  /* ------------------------------------------------------------------ read markers, banner, buttons */
+  const missedCount = c => {
+    if (!c.catchFrom) return 0;
+    const t = Date.parse(c.catchFrom);
+    return c.msgs.filter(m => m.sender_id !== me.id && Date.parse(m.created_at) > t).length;
+  };
+  const readTimers = {};
+  function markRead(c, now) {
+    if (!c || !me) return;
+    clearTimeout(readTimers[c.id]);
+    const go = async () => {
+      try { const { data, error } = await nookDb.rpc('mark_chat_read', { p_cid: c.id }); if (!error && data) c.readAt = data; } catch (e) {}
+    };
+    if (now) go(); else readTimers[c.id] = setTimeout(go, 400);
+  }
+
+  const banner = ce('div', 'cuBanner');
+  banner.innerHTML = '<span id="cuBText"></span><button type="button" class="go" id="cuBGo"></button><button type="button" class="x" id="cuBX" aria-label="Dismiss">✕</button>';
+  $('head').after(banner);
+  $('cuBGo').onclick = () => { banner.style.display = 'none'; openCatchUp(active, { range: 'missed' }); };
+  $('cuBX').onclick = () => { if (active) active.bannerOff = true; banner.style.display = 'none'; };
+
+  function updateBanner(c) {
+    const n = c && c === active && c.loaded ? missedCount(c) : 0;
+    const show = n >= BANNER_MIN && !c.aiOff && !c.bannerOff;
+    banner.style.display = show ? 'flex' : 'none';
+    if (!show) return;
+    const l = LBL[store.get('nook-cu-lang') === 'hi' ? 'hi' : 'en'];
+    const more = c.msgs.length >= 300 && Date.parse(c.msgs[0].created_at) > Date.parse(c.catchFrom);
+    $('cuBText').textContent = l.banner(n + (more ? '+' : ''));
+    $('cuBGo').textContent = l.bannerGo;
+  }
+  const refreshAi = () => updateBanner(active);
+
+  const cuBtn = ce('button', 'tool', '✨'); cuBtn.type = 'button'; cuBtn.id = 'cuBtn';
+  cuBtn.title = 'Catch me up'; cuBtn.setAttribute('aria-label', 'Catch me up');
+  ($('attachBtn') || $('pickBtn')).after(cuBtn);
+  cuBtn.onclick = () => openCatchUp(active);
+  const roBtn = ce('button', 'pchip', '✨ Catch me up'); roBtn.type = 'button'; roBtn.style.marginLeft = '10px';
+  roBtn.onclick = () => openCatchUp(active); $('ro').appendChild(roBtn);
+  $('text').placeholder = 'Write a message · try @nook';
+
+  /* type @nook (or @ai) in any chat: nothing is sent, it opens Catch me up instead.
+     Examples: "@nook"  "@nook deadlines"  "@nook last 50"  "@nook sawaal"  "@nook hinglish" */
+  document.addEventListener('submit', e => {
+    if (e.target.id !== 'composer' || !active) return;
+    const v = $('text').value;
+    if (!/(^|\s)@(?:nook|ai)\b/i.test(v)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const low = v.toLowerCase(), o = {};
+    const n = low.match(/(?:last|pichle|pichhle|latest)\s*(\d{1,4})/);
+    if (n) o.range = Math.min(500, Math.max(10, +n[1]));
+    if (/deadline|\bdue\b|submit|jama/.test(low)) o.focus = 'deadlines';
+    else if (/decision|decide|final|\btay\b/.test(low)) o.focus = 'decisions';
+    else if (/question|sawaal|sawal|doubt|\?/.test(low)) o.focus = 'open';
+    if (/hinglish|hindi/.test(low)) o.lang = 'hi'; else if (/english/.test(low)) o.lang = 'en';
+    $('text').value = ''; openCatchUp(active, o);
+  }, true);
+
+  /* ------------------------------------------------------------------ wiring into the app */
+  const _oc = window.openChat;
+  window.openChat = async function (c) {
+    const fresh = active !== c;
+    if (fresh) { c.catchFrom = c.readAt || null; c.bannerOff = false; banner.style.display = 'none'; }
+    const out = await _oc(c);
+    if (active === c) { updateBanner(c); if (fresh) markRead(c); }
+    return out;
+  };
+  const _hm = window.handleMessage;
+  window.handleMessage = async function (m) {
+    await _hm(m);
+    try { if (active && active.id === m.conversation_id && !document.hidden) markRead(active); } catch (e) {}
+  };
+  document.addEventListener('visibilitychange', () => {
+    const c = active; if (!c) return;
+    if (document.hidden) { c.readAt = new Date().toISOString(); markRead(c, true); return; }
+    if (c.readAt && banner.style.display === 'none' && !c.bannerOff) { c.catchFrom = c.readAt; updateBanner(c); }
+    markRead(c);
+  });
+
+  const _lc = window.loadChats;
+  window.loadChats = async function () {
+    await _lc();
+    try {
+      const ids = chats.map(c => c.id);
+      if (ids.length) {
+        const [rd, cv] = await Promise.all([
+          nookDb.from('chat_reads').select('conversation_id,last_read_at').eq('user_id', me.id),
+          nookDb.from('conversations').select('id,ai_enabled').in('id', ids)
+        ]);
+        if (!rd.error && rd.data) rd.data.forEach(x => {
+          const c = byId[x.conversation_id];
+          if (c && (!c.readAt || Date.parse(x.last_read_at) > Date.parse(c.readAt))) c.readAt = x.last_read_at;
+        });
+        if (!cv.error && cv.data) cv.data.forEach(x => { const c = byId[x.id]; if (c) c.aiOff = x.ai_enabled === false; });
+      }
+    } catch (e) {}
+    refreshAi();
+  };
+
+  /* admin switch inside group / broadcast info */
+  const _oi = window.openInfo;
+  window.openInfo = function (c) {
+    _oi(c);
+    const old = $('cuInfoRow'); if (old) old.remove();
+    if (c.type === 'direct') return;
+    const on = !c.aiOff, row = ce('div', 'cuInfo'); row.id = 'cuInfoRow';
+    row.append(ce('div', '', '✨ Catch me up is ' + (on ? 'on' : 'off') + ' in this ' + c.type + '. It runs on each person’s own device and only when they tap it or type @nook.'));
+    if (c.owner === me.id || (c.roles && c.roles[me.id] === 'admin')) {
+      const b = ce('button', 'pchip', on ? 'Turn off' : 'Turn on'); b.type = 'button';
+      b.onclick = async () => {
+        const { error } = await nookDb.rpc('set_chat_ai', { p_cid: c.id, p_enabled: !on });
+        if (error) return toast(error.message);
+        c.aiOff = on; toast('Catch me up turned ' + (on ? 'off' : 'on')); await loadChats();
+      };
+      row.append(b);
+    }
+    $('iMembers').before(row);
+  };
 })();
 </script>
 </body>
