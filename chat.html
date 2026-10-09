@@ -1327,5 +1327,249 @@ $('logout').onclick = async () => { await nookDb.auth.signOut(); location.href =
   };
 })();
 </script>
+
+<!-- ===== Added feature: group admins (add/remove members, make admin, rename, description, group photo) ===== -->
+<script>
+(function () {
+  'use strict';
+  const GBUCKET = 'avatars', GSIZE = 256, GMAX_IN = 15 * 1024 * 1024;
+  const ge = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const isAdmin = (c, id) => !!(c && c.roles && c.roles[id] === 'admin');
+  const setUrlAv = (node, url, fb) => {
+    if (!node) return;
+    if (url) { node.style.backgroundImage = 'url("' + String(url).replace(/"/g, '%22') + '")'; node.textContent = ''; }
+    else { node.style.backgroundImage = ''; if (fb != null) node.textContent = fb; }
+  };
+  let infoChat = null;
+
+  const css = document.createElement('style');
+  css.textContent = `
+#iOverlay .dialog{max-height:92vh;overflow-y:auto}
+.member{flex-wrap:wrap}
+.gav{width:88px;height:88px;margin:0 auto 10px;font-size:36px;font-family:var(--head);font-weight:800;display:none}
+#gDesc{display:none}
+#gDesc .gd{color:var(--muted);font-size:14px;line-height:1.4;white-space:pre-wrap;margin:4px 0 10px;overflow-wrap:anywhere}
+.gtools{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.mact{display:flex;flex-wrap:wrap;gap:6px;width:100%;padding-left:54px}
+.pchip.rm{background:#fde7e4;color:#a8281b}
+html[data-theme="dark"] .pchip.rm{background:#4a1f1b;color:#ffb4aa}`;
+  document.head.appendChild(css);
+
+  /* ---------- extra pieces inside the existing info dialog ---------- */
+  const dialog = $('iOverlay').querySelector('.dialog');
+  const gav = ge('div', 'avatar gav t-group'); gav.id = 'gAv'; dialog.insertBefore(gav, $('iTitle'));
+  const gdesc = ge('div'); gdesc.id = 'gDesc';
+  const gdText = ge('div', 'gd'), tools = ge('div', 'gtools');
+  gdesc.append(gdText, tools); $('iHint').after(gdesc);
+  const mkTool = (txt, fn, cls) => { const b = ge('button', 'pchip' + (cls ? ' ' + cls : ''), txt); b.type = 'button'; b.onclick = fn; tools.appendChild(b); return b; };
+  const addBtn = ge('button', 'pchip', '＋ Add members'); addBtn.type = 'button'; addBtn.style.margin = '0 0 6px'; addBtn.style.display = 'none';
+  $('iMembers').before(addBtn);
+  const fileIn = ge('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.hidden = true; document.body.appendChild(fileIn);
+
+  /* ---------- database calls (all go through admin-checked functions) ---------- */
+  async function call(name, args, okMsg) {
+    const { error } = await nookDb.rpc(name, args);
+    if (error) { toast(error.message); return false; }
+    if (okMsg) toast(okMsg);
+    await loadChats();
+    return true;
+  }
+  const cur = () => (infoChat && byId[infoChat.id]) || null;
+
+  mkTool('Edit name', async () => {
+    const c = cur(); if (!c) return;
+    const v = prompt('Group name', c.name); if (v === null) return;
+    const t = v.trim().slice(0, 60); if (!t) return toast('Name cannot be empty');
+    call('group_update', { p_cid: c.id, p_name: t }, 'Group name updated');
+  });
+  mkTool('Edit description', async () => {
+    const c = cur(); if (!c) return;
+    const v = prompt('Group description', c.desc || ''); if (v === null) return;
+    call('group_update', { p_cid: c.id, p_description: v.trim().slice(0, 500) }, 'Description updated');
+  });
+  mkTool('Change photo', () => fileIn.click());
+  const rmPhoto = mkTool('Remove photo', async () => {
+    const c = cur(); if (!c) return;
+    if (await call('group_update', { p_cid: c.id, p_clear_avatar: true }, 'Group photo removed')) clearOldGroupPhotos(c.id, null);
+  }, 'rm');
+
+  function toSquare(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.naturalWidth, img.naturalHeight), cv = document.createElement('canvas');
+        cv.width = cv.height = GSIZE;
+        cv.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, GSIZE, GSIZE);
+        URL.revokeObjectURL(url);
+        cv.toBlob(b => b ? resolve(b) : reject(new Error('Could not process image')), 'image/jpeg', 0.88);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a supported image')); };
+      img.src = url;
+    });
+  }
+  async function clearOldGroupPhotos(cid, keep) {
+    try {
+      const folder = 'groups/' + cid;
+      const { data } = await nookDb.storage.from(GBUCKET).list(folder);
+      const old = (data || []).map(f => folder + '/' + f.name).filter(p => p !== keep);
+      if (old.length) await nookDb.storage.from(GBUCKET).remove(old);
+    } catch (e) {}
+  }
+  fileIn.onchange = async () => {
+    const f = fileIn.files[0]; fileIn.value = ''; const c = cur();
+    if (!f || !c) return;
+    if (!f.type.startsWith('image/')) return toast('Please choose an image');
+    if (f.size > GMAX_IN) return toast('Image is over 15 MB');
+    toast('Uploading group photo…');
+    try {
+      const blob = await toSquare(f), path = 'groups/' + c.id + '/' + Date.now() + '.jpg';
+      const up = await nookDb.storage.from(GBUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+      if (up.error) throw up.error;
+      const url = nookDb.storage.from(GBUCKET).getPublicUrl(path).data.publicUrl;
+      if (await call('group_update', { p_cid: c.id, p_avatar: url }, 'Group photo updated')) clearOldGroupPhotos(c.id, path);
+    } catch (err) { toast('Could not save photo: ' + (err.message || err)); }
+  };
+
+  /* ---------- add members dialog ---------- */
+  const ao = ge('div', 'overlay'); ao.id = 'gaOv'; ao.setAttribute('role', 'dialog'); ao.setAttribute('aria-modal', 'true'); ao.setAttribute('aria-label', 'Add members');
+  ao.innerHTML = '<div class="dialog"><h3>Add members</h3><div class="chips" id="gaChips"></div><input id="gaQ" placeholder="Search by name or username" autocomplete="off" style="margin-top:10px"><div class="results" id="gaRes"><p class="hint">Type at least 2 letters.</p></div><div class="actions"><button class="close" id="gaCancel" type="button" style="float:none">Cancel</button><button class="primary" id="gaGo" type="button">Add</button></div></div>';
+  document.body.appendChild(ao);
+  const gaPick = new Map(); let gaTimer;
+  function drawGa() {
+    const b = $('gaChips'); b.innerHTML = '';
+    gaPick.forEach((u, id) => {
+      const c = ge('button', 'pchip', u.full_name + ' ✕'); c.type = 'button'; c.setAttribute('aria-label', 'Remove ' + u.full_name);
+      c.onclick = () => { gaPick.delete(id); drawGa(); }; b.appendChild(c);
+    });
+  }
+  addBtn.onclick = () => {
+    gaPick.clear(); drawGa(); $('gaQ').value = ''; $('gaRes').innerHTML = '<p class="hint">Type at least 2 letters.</p>';
+    ao.classList.add('open'); $('gaQ').focus();
+  };
+  $('gaQ').addEventListener('input', () => {
+    clearTimeout(gaTimer);
+    gaTimer = setTimeout(() => runSearch('gaQ', 'gaRes', u => {
+      const c = cur();
+      if (c && c.members[u.id]) return toast(u.full_name + ' is already in this group');
+      gaPick.set(u.id, u); drawGa(); $('gaQ').value = ''; $('gaRes').innerHTML = '<p class="hint">Added to the list. Search for more people.</p>'; $('gaQ').focus();
+    }), 250);
+  });
+  $('gaCancel').onclick = () => ao.classList.remove('open');
+  ao.addEventListener('click', e => { if (e.target === ao) ao.classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') ao.classList.remove('open'); });
+  $('gaGo').onclick = async () => {
+    const c = cur(); if (!c) return;
+    if (!gaPick.size) return toast('Pick at least one person');
+    $('gaGo').disabled = true;
+    const n = gaPick.size, ok = await call('group_add_members', { p_cid: c.id, p_users: [...gaPick.keys()] }, n + (n === 1 ? ' person added' : ' people added'));
+    $('gaGo').disabled = false;
+    if (ok) ao.classList.remove('open');
+  };
+
+  /* ---------- the info dialog for groups ---------- */
+  const _oi = window.openInfo;
+  window.openInfo = function (c) {
+    _oi(c); infoChat = c;
+    const isG = c.type === 'group';
+    gav.style.display = isG ? 'grid' : 'none'; gdesc.style.display = isG ? 'block' : 'none'; addBtn.style.display = 'none';
+    if (!isG) return;
+    const admin = isAdmin(c, me.id), n = Object.keys(c.members).length;
+    setUrlAv(gav, c.gavatar, initial(c.name));
+    gdText.textContent = c.desc || (admin ? 'No description yet.' : 'No description.');
+    tools.style.display = admin ? 'flex' : 'none'; rmPhoto.style.display = c.gavatar ? '' : 'none';
+    addBtn.style.display = admin ? '' : 'none';
+    $('iHint').textContent = 'Group · ' + n + (n === 1 ? ' person' : ' people') + (admin ? ' · you are an admin' : '');
+
+    const ids = Object.entries(c.members).sort((a, b) => (b[0] === c.owner) - (a[0] === c.owner)).map(x => x[0]);
+    const box = $('iMembers'), rows = [...box.querySelectorAll('.member')];
+    const pairs = rows.map((row, i) => [row, ids[i]]).filter(p => p[1]);
+    pairs.forEach(([row, id]) => {
+      if (isAdmin(c, id) && id !== c.owner) row.appendChild(ge('span', 'tag', 'Admin'));
+      if (admin && id !== me.id && id !== c.owner) {
+        const nm = c.members[id].name, act = ge('div', 'mact');
+        const mk = (txt, fn, cls) => { const b = ge('button', 'pchip' + (cls ? ' ' + cls : ''), txt); b.type = 'button'; b.onclick = fn; act.appendChild(b); };
+        if (isAdmin(c, id)) mk('Dismiss as admin', () => call('group_set_admin', { p_cid: c.id, p_user: id, p_admin: false }, nm + ' is no longer an admin'));
+        else mk('Make admin', () => call('group_set_admin', { p_cid: c.id, p_user: id, p_admin: true }, nm + ' is now an admin'));
+        mk('Remove', () => { if (confirm('Remove ' + nm + ' from "' + c.name + '"?')) call('group_remove_member', { p_cid: c.id, p_user: id }, nm + ' removed'); }, 'rm');
+        row.appendChild(act);
+      }
+    });
+    const rank = id => id === c.owner ? 0 : isAdmin(c, id) ? 1 : 2;
+    pairs.map((p, i) => [p, i]).sort((a, b) => rank(a[0][1]) - rank(b[0][1]) || a[1] - b[1]).forEach(([p]) => box.appendChild(p[0]));
+  };
+
+  /* leaving a group goes through a function that hands over admin if needed */
+  const prevLeave = $('iLeave').onclick;
+  $('iLeave').onclick = async () => {
+    const c = active;
+    if (!c || c.type !== 'group') return prevLeave && prevLeave();
+    if (!confirm('Leave "' + c.name + '"?')) return;
+    const { error } = await nookDb.rpc('leave_group', { p_cid: c.id });
+    if (error) return toast('Could not leave: ' + error.message);
+    $('iOverlay').classList.remove('open');
+    active = null; $('head').style.display = $('msgs').style.display = $('composer').style.display = $('ro').style.display = 'none';
+    $('none').style.display = ''; $('app').classList.remove('show-chat');
+    await loadChats(); toast('You left ' + c.name);
+  };
+
+  /* ---------- group photo, roles and description in the lists ---------- */
+  async function loadMeta() {
+    const gs = chats.filter(c => c.type === 'group'); if (!gs.length) return;
+    const ids = gs.map(c => c.id);
+    const [r, g] = await Promise.all([
+      nookDb.from('conversation_members').select('conversation_id,user_id,role').in('conversation_id', ids),
+      nookDb.from('conversations').select('id,description,avatar_url').in('id', ids)
+    ]);
+    if (!r.error && r.data) {
+      gs.forEach(c => { c.roles = {}; });
+      r.data.forEach(x => { const c = byId[x.conversation_id]; if (c) c.roles[x.user_id] = x.role; });
+    }
+    if (!g.error && g.data) g.data.forEach(x => { const c = byId[x.id]; if (c) { c.desc = x.description || ''; c.gavatar = x.avatar_url || ''; } });
+  }
+  function checkActive() {
+    if (active && !byId[active.id]) {
+      const n = active.name; active = null;
+      $('head').style.display = $('msgs').style.display = $('composer').style.display = $('ro').style.display = 'none';
+      $('none').style.display = ''; $('app').classList.remove('show-chat'); $('iOverlay').classList.remove('open');
+      toast('You are no longer in ' + n);
+    }
+  }
+  const _rl = window.renderList;
+  window.renderList = function () {
+    _rl();
+    const q = $('q').value.trim().toLowerCase();
+    const rows = chats.filter(c => (filter === 'all' || c.type === filter) && c.name.toLowerCase().includes(q));
+    document.querySelectorAll('#list .item').forEach((it, i) => {
+      const c = rows[i]; if (c && c.type === 'group') setUrlAv(it.querySelector('.avatar'), c.gavatar, initial(c.name));
+    });
+  };
+  const _uh = window.updateHeader;
+  window.updateHeader = function () {
+    _uh();
+    if (!active) return;
+    $('hName').textContent = active.name;
+    if (active.type === 'group') setUrlAv($('hAvatar'), active.gavatar, initial(active.name));
+    else if (active.type !== 'direct') setUrlAv($('hAvatar'), '', initial(active.name));
+  };
+
+  let wired = false;
+  const _lc = window.loadChats;
+  window.loadChats = async function () {
+    await _lc();
+    try { await loadMeta(); } catch (e) {}
+    checkActive(); renderList(); updateHeader();
+    if ($('iOverlay').classList.contains('open') && infoChat && byId[infoChat.id]) window.openInfo(byId[infoChat.id]);
+    if (wired) return; wired = true;
+    // other people's group changes (members, roles, name, photo) show up live
+    let t; const soon = () => { clearTimeout(t); t = setTimeout(() => loadChats(), 500); };
+    try {
+      nookDb.channel('nook-groups')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, soon)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, soon)
+        .subscribe();
+    } catch (e) {}
+  };
+})();
+</script>
 </body>
 </html>
